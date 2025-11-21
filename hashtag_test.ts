@@ -153,7 +153,9 @@ describe("Backslash Escaping", () => {
 
   it("backslash before space includes space and continues until next space", () => {
     expect(findFirstHashtag("#with\\ space")?.tag).toBe("with space");
-    expect(findFirstHashtag("#with\\ space more")?.tag).toBe("with space");
+    expect(findFirstHashtag("#with\\ space more")?.tag).toBe(
+      "with space",
+    );
   });
 
   it("backslash before angle bracket includes it", () => {
@@ -258,7 +260,9 @@ describe("Unicode Support", () => {
 
   it("accented characters", () => {
     expect(findFirstHashtag("#café")?.tag).toBe("café");
-    expect(findFirstHashtag("#café.français")?.tag).toBe("café.français");
+    expect(findFirstHashtag("#café.français")?.tag).toBe(
+      "café.français",
+    );
   });
 
   it("currency symbols", () => {

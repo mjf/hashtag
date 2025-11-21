@@ -33,7 +33,8 @@ function nextUnescapedHash(input: string, from: number): number {
   let i = input.indexOf("#", from);
   while (i !== -1) {
     let bs = 0;
-    for (let k = i - 1; k >= 0 && input.charCodeAt(k) === 0x5c; k--) bs++;
+    for (let k = i - 1; k >= 0 && input.charCodeAt(k) === 0x5c; k--)
+      bs++;
     if ((bs & 1) === 0) return i;
     i = input.indexOf("#", i + 1);
   }
@@ -64,7 +65,10 @@ function parseWrappedAt(
     }
     if ((escBs & 1) === 0) {
       if (j > contentStart) {
-        return { end: j + 1, content: input.slice(contentStart, j) };
+        return {
+          end: j + 1,
+          content: input.slice(contentStart, j),
+        };
       }
       return null;
     }
@@ -114,7 +118,9 @@ function parseUnwrappedFrom(
         break;
       }
       if (
-        isStrongTerminator(next) || isPunctuation(next) || isAngleBracket(next)
+        isStrongTerminator(next) ||
+        isPunctuation(next) ||
+        isAngleBracket(next)
       ) {
         break;
       }
@@ -138,7 +144,9 @@ function parseUnwrappedFrom(
   return null;
 }
 
-export function findHashtagWrappedTags(input: string): WrappedHashtag[] {
+export function findHashtagWrappedTags(
+  input: string,
+): WrappedHashtag[] {
   const out: WrappedHashtag[] = [];
   const n = input.length;
   let i = 0;
@@ -146,7 +154,11 @@ export function findHashtagWrappedTags(input: string): WrappedHashtag[] {
   while (i < n) {
     const next = findNextWrappedFrom(input, i);
     if (!next) break;
-    out.push({ start: next.start, end: next.end, content: next.content });
+    out.push({
+      start: next.start,
+      end: next.end,
+      content: next.content,
+    });
     i = next.end;
   }
   return out;
@@ -164,7 +176,8 @@ function findNextWrappedFrom(
     if (hash === -1) return null;
 
     let bs = 0;
-    for (let k = hash - 1; k >= 0 && input.charCodeAt(k) === 0x5c; k--) bs++;
+    for (let k = hash - 1; k >= 0 && input.charCodeAt(k) === 0x5c; k--)
+      bs++;
     if ((bs & 1) !== 0) {
       i = hash + 2;
       continue;
@@ -172,7 +185,11 @@ function findNextWrappedFrom(
 
     const parsed = parseWrappedAt(input, hash);
     if (parsed) {
-      return { start: hash, end: parsed.end, content: parsed.content };
+      return {
+        start: hash,
+        end: parsed.end,
+        content: parsed.content,
+      };
     }
 
     i = hash + 2;
@@ -215,7 +232,7 @@ function findFirstUnwrapped(
 
 export function unescapeHashtagContent(content: string): string {
   let out = "";
-  for (let i = 0; i < content.length;) {
+  for (let i = 0; i < content.length; ) {
     const ch = content[i];
     if (ch === "\\") {
       if (i + 1 < content.length) {
@@ -243,7 +260,10 @@ export function findFirstHashtag(input: string): FirstHashtag | null {
     if (i + 1 < n && input.charCodeAt(i + 1) === 0x3c) {
       const parsed = parseWrappedAt(input, i);
       if (parsed) {
-        return { type: "wrapped", tag: unescapeHashtagContent(parsed.content) };
+        return {
+          type: "wrapped",
+          tag: unescapeHashtagContent(parsed.content),
+        };
       }
       pos = i + 2;
     } else {
@@ -260,7 +280,7 @@ export function findFirstHashtag(input: string): FirstHashtag | null {
 }
 
 function canBeUnwrapped(content: string): boolean {
-  for (let i = 0; i < content.length;) {
+  for (let i = 0; i < content.length; ) {
     const cu = content.charCodeAt(i);
     if (isStrongTerminator(cu) || isAngleBracket(cu)) {
       return false;
@@ -280,7 +300,7 @@ function canBeUnwrapped(content: string): boolean {
 export function hashtagForContent(content: string): string {
   if (canBeUnwrapped(content)) {
     let safe = "";
-    for (let i = 0; i < content.length;) {
+    for (let i = 0; i < content.length; ) {
       const ch = content[i];
       if (ch === "\\" || ch === "#") {
         safe += "\\" + ch;
@@ -310,7 +330,7 @@ export function hashtagForContent(content: string): string {
     return "#" + safe;
   } else {
     let esc = "";
-    for (let i = 0; i < content.length;) {
+    for (let i = 0; i < content.length; ) {
       const ch = content[i];
       if (ch === "\\" || ch === ">") {
         esc += "\\" + ch;
