@@ -1,5 +1,6 @@
 fmt:
-	prettier -w *.ts
+	prettier --write *.md
+	prettier --write *.ts
 
 test:
 	deno test
