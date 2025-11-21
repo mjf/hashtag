@@ -6,8 +6,8 @@ import {
   unwrappedTagRegex,
 } from "./hashtag.ts";
 
-import { describe, it } from "https://deno.land/std/testing/bdd.ts";
-import { expect } from "https://deno.land/std/expect/mod.ts";
+import { describe, it } from "@std/testing/bdd";
+import { expect } from "@std/expect";
 
 describe("Position Independence (Stability)", () => {
   it("single punctuation at EOI vs with following space both terminate", () => {
