@@ -29,13 +29,30 @@ function isPunctuation(cu: number): boolean {
   );
 }
 
+function countPrecedingBackslashes(input: string, pos: number): number {
+  let count = 0;
+  for (let k = pos - 1; k >= 0 && input.charCodeAt(k) === 0x5c; k--) {
+    count++;
+  }
+  return count;
+}
+
+function isSurrogatePair(input: string, pos: number): boolean {
+  if (pos + 1 >= input.length) {
+    return false;
+  }
+  const h = input.charCodeAt(pos);
+  const l = input.charCodeAt(pos + 1);
+  return h >= 0xd800 && h <= 0xdbff && l >= 0xdc00 && l <= 0xdfff;
+}
+
 function nextUnescapedHash(input: string, from: number): number {
   let i = input.indexOf("#", from);
   while (i !== -1) {
-    let bs = 0;
-    for (let k = i - 1; k >= 0 && input.charCodeAt(k) === 0x5c; k--)
-      bs++;
-    if ((bs & 1) === 0) return i;
+    let bs = countPrecedingBackslashes(input, i);
+    if ((bs & 1) === 0) {
+      return i;
+    }
     i = input.indexOf("#", i + 1);
   }
   return -1;
@@ -50,19 +67,11 @@ function parseWrappedAt(
     return null;
   }
   const contentStart = index + 2;
-
   let j = contentStart;
   while (true) {
     j = input.indexOf(">", j);
     if (j === -1) return null;
-    let escBs = 0;
-    for (
-      let k = j - 1;
-      k >= contentStart && input.charCodeAt(k) === 0x5c;
-      k--
-    ) {
-      escBs++;
-    }
+    let escBs = countPrecedingBackslashes(input, j);
     if ((escBs & 1) === 0) {
       if (j > contentStart) {
         return {
@@ -82,19 +91,13 @@ function parseUnwrappedFrom(
 ): { end: number; content: string } | null {
   const n = input.length;
   let j = start;
-
   while (j < n) {
     const cu = input.charCodeAt(j);
-
     if (cu === 0x5c) {
       if (j + 1 < n) {
-        const next = input.charCodeAt(j + 1);
-        if (next >= 0xd800 && next <= 0xdbff && j + 2 < n) {
-          const low = input.charCodeAt(j + 2);
-          if (low >= 0xdc00 && low <= 0xdfff) {
-            j += 3;
-            continue;
-          }
+        if (isSurrogatePair(input, j + 1)) {
+          j += 3;
+          continue;
         }
         j += 2;
         continue;
@@ -103,11 +106,9 @@ function parseUnwrappedFrom(
         break;
       }
     }
-
     if (isStrongTerminator(cu) || isAngleBracket(cu)) {
       break;
     }
-
     if (isPunctuation(cu)) {
       if (j + 1 >= n) {
         break;
@@ -127,19 +128,17 @@ function parseUnwrappedFrom(
       j += 1;
       continue;
     }
-
-    if (cu >= 0xd800 && cu <= 0xdbff && j + 1 < n) {
-      const low = input.charCodeAt(j + 1);
-      if (low >= 0xdc00 && low <= 0xdfff) {
-        j += 2;
-        continue;
-      }
+    if (isSurrogatePair(input, j)) {
+      j += 2;
+      continue;
     }
     j += 1;
   }
-
   if (j > start) {
-    return { end: j, content: input.slice(start, j) };
+    return {
+      end: j,
+      content: input.slice(start, j),
+    };
   }
   return null;
 }
@@ -150,7 +149,6 @@ export function findHashtagWrappedTags(
   const out: WrappedHashtag[] = [];
   const n = input.length;
   let i = 0;
-
   while (i < n) {
     const next = findNextWrappedFrom(input, i);
     if (!next) break;
@@ -170,19 +168,16 @@ function findNextWrappedFrom(
 ): { start: number; end: number; content: string } | null {
   const n = input.length;
   let i = from;
-
   while (i < n) {
     const hash = input.indexOf("#<", i);
-    if (hash === -1) return null;
-
-    let bs = 0;
-    for (let k = hash - 1; k >= 0 && input.charCodeAt(k) === 0x5c; k--)
-      bs++;
+    if (hash === -1) {
+      return null;
+    }
+    let bs = countPrecedingBackslashes(input, hash);
     if ((bs & 1) !== 0) {
       i = hash + 2;
       continue;
     }
-
     const parsed = parseWrappedAt(input, hash);
     if (parsed) {
       return {
@@ -191,10 +186,8 @@ function findNextWrappedFrom(
         content: parsed.content,
       };
     }
-
     i = hash + 2;
   }
-
   return null;
 }
 
@@ -202,8 +195,13 @@ function findFirstWrapped(
   input: string,
 ): { index: number; content: string } | null {
   const res = findNextWrappedFrom(input, 0);
-  if (!res) return null;
-  return { index: res.start, content: res.content };
+  if (!res) {
+    return null;
+  }
+  return {
+    index: res.start,
+    content: res.content,
+  };
 }
 
 function findFirstUnwrapped(
@@ -211,21 +209,22 @@ function findFirstUnwrapped(
 ): { index: number; content: string } | null {
   const n = input.length;
   let pos = 0;
-
   while (true) {
     const i = nextUnescapedHash(input, pos);
-    if (i === -1) return null;
-
+    if (i === -1) {
+      return null;
+    }
     if (i + 1 < n && input.charCodeAt(i + 1) === 0x3c) {
       pos = i + 2;
       continue;
     }
-
     const parsed = parseUnwrappedFrom(input, i + 1);
     if (parsed) {
-      return { index: i, content: parsed.content };
+      return {
+        index: i,
+        content: parsed.content,
+      };
     }
-
     pos = i + 1;
   }
 }
@@ -252,11 +251,11 @@ export function unescapeHashtagContent(content: string): string {
 export function findFirstHashtag(input: string): FirstHashtag | null {
   const n = input.length;
   let pos = 0;
-
   while (true) {
     const i = nextUnescapedHash(input, pos);
-    if (i === -1) return null;
-
+    if (i === -1) {
+      return null;
+    }
     if (i + 1 < n && input.charCodeAt(i + 1) === 0x3c) {
       const parsed = parseWrappedAt(input, i);
       if (parsed) {
@@ -285,12 +284,9 @@ function canBeUnwrapped(content: string): boolean {
     if (isStrongTerminator(cu) || isAngleBracket(cu)) {
       return false;
     }
-    if (cu >= 0xd800 && cu <= 0xdbff && i + 1 < content.length) {
-      const low = content.charCodeAt(i + 1);
-      if (low >= 0xdc00 && low <= 0xdfff) {
-        i += 2;
-        continue;
-      }
+    if (isSurrogatePair(content, i)) {
+      i += 2;
+      continue;
     }
     i += 1;
   }
@@ -314,14 +310,10 @@ export function hashtagForContent(content: string): string {
           i += 1;
         }
       } else {
-        const cu = content.charCodeAt(i);
-        if (cu >= 0xd800 && cu <= 0xdbff && i + 1 < content.length) {
-          const low = content.charCodeAt(i + 1);
-          if (low >= 0xdc00 && low <= 0xdfff) {
-            safe += content.slice(i, i + 2);
-            i += 2;
-            continue;
-          }
+        if (isSurrogatePair(content, i)) {
+          safe += content.slice(i, i + 2);
+          i += 2;
+          continue;
         }
         safe += content[i];
         i += 1;
@@ -336,14 +328,10 @@ export function hashtagForContent(content: string): string {
         esc += "\\" + ch;
         i += 1;
       } else {
-        const cu = content.charCodeAt(i);
-        if (cu >= 0xd800 && cu <= 0xdbff && i + 1 < content.length) {
-          const low = content.charCodeAt(i + 1);
-          if (low >= 0xdc00 && low <= 0xdfff) {
-            esc += content.slice(i, i + 2);
-            i += 2;
-            continue;
-          }
+        if (isSurrogatePair(content, i)) {
+          esc += content.slice(i, i + 2);
+          i += 2;
+          continue;
         }
         esc += content[i];
         i += 1;
