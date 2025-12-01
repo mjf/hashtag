@@ -1,298 +1,193 @@
 # Hashtag Parser
 
-An implementation of a dual-form hashtag syntax with
-position-independent parsing, intelligent punctuation handling, and dual
-escaping mechanisms.
-
-The beauty of the syntax is its simplicity and predictability.
+Implementation of a dual-form hashtag syntax with position-independent
+parsing, intelligent punctuation handling, and backslash escaping.
 
 ## Formal Syntax Specification
 
-This parser recognizes two hashtag forms within text: wrapped hashtags
-delimited by angle brackets, and unwrapped hashtags with greedy matching
-and explicit termination through character doubling or escaping.
+This parser recognizes two hashtag forms: wrapped hashtags delimited by
+angle brackets (`#<content>`), and unwrapped hashtags (`#content`) with
+intelligent punctuation handling based on lookahead analysis.
 
 ### Wrapped Hashtag Form
 
-Syntax: `#<content>`
+**Syntax:** `#<content>`
 
-A wrapped hashtag begins with an unescaped hash followed immediately by
-a left angle bracket. The hash is unescaped when preceded by an even
-number of backslashes (including zero). The content extends until the
-first unescaped right angle bracket.
+A wrapped hashtag begins with an unescaped hash (`#`) followed
+immediately by a left angle bracket (`<`). The hash is unescaped when
+preceded by an even number of backslashes (including zero). The content
+extends until the first unescaped right angle bracket (`>`).
 
-#### Escape Rules within Wrapped Content
+#### Escape rules within wrapped content
 
-- Backslash `\` followed by any character forms an escape pair
-
-- The right angle bracket `>` must be escaped as `\>` to appear
+- Backslash (`\`) followed by any character forms an escape pair
+- The backslash is consumed during unescaping, and the following
+  character is included literally
+- The right angle bracket (`>`) must be escaped as `\>` to appear
   literally
-
 - The backslash itself must be escaped as `\\` to appear literally
-
-- The left angle bracket `<` requires no escaping (has no delimiter
-  role)
-
+- The left angle bracket (`<`) should be escaped as `\<` for clarity
+  (not strictly required for parsing)
 - All other characters may appear literally without escaping
 
 Content must be non-empty. The sequence `#<>` is rejected.
 
-#### Examples with End-of-input
+#### Examples
 
 ```
-#<simple>           -> "simple"
-#<with\>bracket>    -> "with>bracket"
-#<back\\slash>      -> "back\slash"
-#<<nested>          -> "<nested"
+#<simple>           → "simple"
+#<with\>bracket>    → "with>bracket"
+#<back\\slash>      → "back\slash"
+#<<nested>          → "<nested"
+#<\<escaped>        → "<escaped"
 ```
 
-#### Examples with Surrounding Text
+With surrounding text:
 
 ```
-Use #<my tag> here.     -> "my tag"
-The #<a\>b> format.     -> "a>b"
-See #<<special>> data.  -> "<special"
+Use #<my tag> here.     → "my tag"
+The #<a\>b> format.     → "a>b"
+See #<<special>> data.  → "<special"
 ```
 
 ### Unwrapped Hashtag Form
 
-Syntax: `#content`
+**Syntax:** `#content`
 
-An unwrapped hashtag begins with an unescaped hash not followed by a
-left angle bracket. The content extends maximally according to character
-classification and lookahead rules.
+An unwrapped hashtag begins with an unescaped hash not followed by
+a left angle bracket. The content extends maximally according to
+character classification and lookahead rules.
 
 #### Termination Conditions
 
-The fundamental design principle is position independence: a hashtag's
-interpretation must remain stable under text transformations (reflowing,
-concatenation, insertion, extraction). This requires that termination
-depends only on the local character sequence, not on distant context
-like end-of-input or following whitespace.
+The fundamental design principle is **position independence**:
+a hashtag's interpretation must remain stable under text transformations
+(reflowing, concatenation, insertion, extraction). Termination depends
+only on the local character sequence, not on distant context.
 
-##### Strong Terminators
+##### Strong Terminators (immediate, unconditional)
 
-- All whitespace and control characters: code points `<= 0x20` (includes
-  `SP`, `HT`, `CR`, `LF`, and all C0 controls)
+- Whitespace and control characters: code points `≤ 0x20` (includes
+  SPACE, TAB, CR, LF, and all C0 controls)
 
-- Extended control characters: code points `0x7F` through `0x9F`
+- Extended control characters: code points `0x7F` through `0x9F` (DEL
+  and C1 controls)
 
 - Left and right angle brackets: `<` and `>` (prevent ambiguity with
   wrapped form)
 
-##### Punctuation Characters
+- Hash character: `#` (marks potential start of next hashtag)
 
-The characters `.`, `,`, `;`, `:`, `!` and `?` use lookahead to
-determine termination:
+##### Punctuation Characters (lookahead-based termination)
 
-- Single punctuation followed by strong terminator: terminates
+The characters `.`, `,`, `;`, `:`, `!`, `?` use lookahead to determine
+termination:
 
-- Single punctuation followed by another punctuation: terminates
-
-- Single punctuation followed by angle bracket: terminates
-
-- Single punctuation followed by end-of-input: terminates
-
-- Single punctuation followed by other characters: included in content,
-  continues
+- Punctuation followed by strong terminator → **terminates**
+- Punctuation followed by another punctuation → **terminates**
+- Punctuation followed by angle bracket → **terminates**
+- Punctuation at end-of-input → **terminates**
+- Punctuation followed by other characters → **included, continues**
 
 This design mirrors natural text where sentence punctuation is followed
-by whitespace or end of input, while mid-word punctuation indicates
-compound identifiers.
-
-#### Doubling as Termination
-
-When a punctuation character appears doubled, the first occurrence is
-included in the hashtag content and the second acts as an explicit
-termination marker. This provides a stable, position-independent way to
-end hashtags with punctuation.
-
-Character doubling as an escape mechanism creates emphasis AND
-termination, which mirrors how people naturally write emphatic text.
-This makes it intuitively discoverable for non-technical users.
-
-Logical reasoning:
-
-1. Single punctuation is context-dependent: `#foo.bar` includes the
-   period because `b` is not a terminator
-
-2. This remains stable when context changes: `#foo.bar` produces
-   "foo.bar" whether at end-of-input, before space, or in middle of text
-
-3. Doubling provides explicit termination: `#foo..bar` terminates at the
-   second period, producing "foo."
-
-4. Doubling is also stable: `#foo..` produces "foo." regardless of
-   context
-
-Historical note: Character doubling as an escape mechanism has deep
-roots in computing history. FORTRAN (1950s) used `''` to represent a
-single quote within string literals. SQL (since 1970s) continues this
-tradition with `''` for quotes in string values. This pattern is
-familiar to database developers and provides an alternative to backslash
-escaping that doesn't require shifting mental models between different
-syntactic contexts.
+by whitespace or end of input, while mid-word punctuation (e.g.,
+`version2.0`, `foo:bar`) indicates compound identifiers.
 
 #### Backslash Escaping
 
-Backslash provides an alternative explicit termination and inclusion
-mechanism familiar to programmers and technical users.
+Backslash provides explicit control over character inclusion and termination:
 
 - Backslash followed by any character forms an escape pair
 - The backslash is consumed during unescaping
 - The following character is included literally in content
 - An escape pair always continues the hashtag (never terminates)
 
-##### Escape Pair Handling
+##### Escape pair handling
 
-- `\` + punctuation: includes the punctuation literally, continues
-- `\` + whitespace: includes the whitespace literally, continues
-- `\` + `\`: includes a single backslash literally, continues
-- `\` + `#`: includes hash literally, continues
-- `\` at end-of-input: consumed, produces nothing, terminates
+- `\` + punctuation → includes the punctuation literally, continues
+- `\` + whitespace → includes the whitespace literally, continues
+- `\` + `\` → includes a single backslash literally, continues
+- `\` + `#` → includes hash literally, continues
+- `\` + `<` or `>` → includes angle bracket literally, continues
+- `\` at end-of-input → consumed, produces nothing, terminates
 
-#### Interaction Between Doubling and Escaping
+#### Examples
 
-When backslash escaping and character doubling interact, the parser
-processes left-to-right with escape pairs taking precedence:
-
-```
-#foo\..     -> "foo."  (includes period, next terminates)
-#foo.\.     -> "foo.." (includes period, escape pair '\.' includes period)
-#foo\\..    -> "foo\." (escape pair '\\' includes backslash, '..' is doubling)
-#foo\...    -> "foo.." (escape pair '\.' includes period, '..' is doubling)
-#foo..\.    -> "foo."  (doubling '..' terminates at second dot)
-```
-
-The key principle: Backslash always binds to the immediately following
-character to form an escape pair. After consuming an escape pair, normal
-rules apply to subsequent characters.
-
-### Comprehensive Examples
-
-#### Punctuation with Lookahead
-
-At end-of-input:
+##### Punctuation with lookahead
 
 ```
-#foo.bar      -> "foo.bar"
-#version2.0   -> "version2.0"
-#cool!        -> "cool"
-#what?now     -> "what?now"
-#foo:bar:baz  -> "foo:bar:baz"
+#foo.bar            → "foo.bar"
+#version2.0         → "version2.0"
+#cool!              → "cool"            (! at EOI terminates)
+#what?now           → "what?now"
+#foo:bar:baz        → "foo:bar:baz"
 ```
 
 With surrounding text:
 
 ```
-Use #foo.bar here.        -> "foo.bar"
-Try #version2.0 now.      -> "version2.0"
-This is #cool! Right?     -> "cool"
-Ask #what?now please.     -> "what?now"
-See #foo:bar:baz format.  -> "foo:bar:baz"
+Use #foo.bar here.            → "foo.bar"
+Try #version2.0 now.          → "version2.0"
+This is #cool! Right?         → "cool"
+Ask #what?now please.         → "what?now"
+See #foo:bar:baz format.      → "foo:bar:baz"
 ```
 
-#### Doubling for Explicit Termination
-
-At end-of-input:
+##### Backslash escaping
 
 ```
-#coding..   -> "coding."
-#awesome!!  -> "awesome!"
-#really??   -> "really?"
-#item,,     -> "item,"
-```
-
-With surrounding text:
-
-```
-I like #coding.. It works!  -> "coding."
-This is #awesome!! Right?   -> "awesome!"
-You mean #really?? Wow.     -> "really?"
-Add #item,, then next.      -> "item,"
-```
-
-#### Backslash Escaping for Termination
-
-At end-of-input:
-
-```
-#coding\.  -> "coding"
-#tag\      -> "tag"
-#foo\,bar  -> "foo,bar"
+#foo\,bar           → "foo,bar"        (comma included via escape)
+#with\ space        → "with space"     (space included via escape)
+#has\<bracket       → "has<bracket"    (angle bracket included)
+#foo\#bar           → "foo#bar"        (hash included)
+#foo\\bar           → "foo\bar"        (backslash included)
+#tag\.              → "tag"            (backslash consumed at EOI)
 ```
 
 With surrounding text:
 
 ```
-I like #coding\. It works!  -> "coding"
-Use #tag\ here.             -> "tag"
-Try #foo\,bar method.       -> "foo,bar"
+Use #with\ space here.        → "with space"
+The #has\<bracket format.     → "has<bracket"
+Try #foo\#bar method.         → "foo#bar"
+See #foo\\bar usage.          → "foo\bar"
 ```
 
-#### Backslash for Including Normally-terminating Characters
-
-At end-of-input:
+##### Punctuation termination
 
 ```
-#with\ space   -> "with space"
-#has\<bracket  -> "has<bracket"
-#foo\#bar      -> "foo#bar"
+#tag,               → "tag"            (comma at EOI terminates)
+#tag!               → "tag"            (exclamation at EOI terminates)
+#foo, bar           → "foo"            (comma before space terminates)
+#foo. bar           → "foo"            (period before space terminates)
+#foo!!              → "foo"            (first ! terminates before second !)
 ```
 
-With surrounding text:
+##### Unicode support
 
 ```
-Use #with\ space here.     -> "with space"
-The #has\<bracket format.  -> "has<bracket"
-Try #foo\#bar method.      -> "foo#bar"
-```
-
-#### Combined Escaping and Doubling
-
-At end-of-input:
-
-```
-#foo\..   -> "foo."
-#foo.\.   -> "foo.."
-#foo\\..  -> "foo\."
+#café.français      → "café.français"
+#foo:🎉             → "foo:🎉"
+#tag:日本語         → "tag:日本語"
+#price:€50          → "price:€50"
 ```
 
 With surrounding text:
 
 ```
-Use #foo\.. here.     -> "foo."
-Try #foo.\. method.   -> "foo.."
-See #foo\\.. format.  -> "foo\."
-```
-
-#### Unicode Support
-
-At end-of-input:
-
-```
-#café.français  -> "café.français"
-#foo:🎉         -> "foo:🎉"
-#tag:日本語     -> "tag:日本語"
-#price:€50      -> "price:€50"
-```
-
-With surrounding text:
-
-```
-Use #café.français style.  -> "café.français"
-This is #foo:🎉 time!      -> "foo:🎉"
-See #tag:日本語 docs.      -> "tag:日本語"
-Check #price:€50 rate.     -> "price:€50"
+Use #café.français style.     → "café.français"
+This is #foo:🎉 time!         → "foo:🎉"
+See #tag:日本語 docs.         → "tag:日本語"
+Check #price:€50 rate.        → "price:€50"
 ```
 
 ## Unicode Handling
 
 The parser operates on UTF-16 code units while treating surrogate pairs
-as atomic units. A high surrogate (`U+D800` through `U+DBFF`) followed
-by a low surrogate (`U+DC00` through `U+DFFF`) represents a single code
-point and is processed atomically during content scanning and escape
-pair recognition.
+as atomic units. A high surrogate (U+D800 through U+DBFF) followed by
+a low surrogate (U+DC00 through U+DFFF) represents a single code point
+and is processed atomically during content scanning and escape pair
+recognition.
 
 ## Parsing Semantics
 
@@ -302,11 +197,10 @@ unescaped hash position, wrapped form takes precedence (checked first)
 when the hash is followed by a left angle bracket. Empty content is
 rejected in both forms.
 
-The lookahead-based punctuation handling with explicit termination
-(doubling or escaping) ensures stability: a hashtag's interpretation
-never changes based on its position in text or what follows at a
-distance. This is critical for text transformations like reflowing,
-concatenation, and extraction.
+The lookahead-based punctuation handling ensures stability: a hashtag's
+interpretation never changes based on its position in text or what
+follows at a distance. This is critical for text transformations like
+reflowing, concatenation, and extraction.
 
 ## API
 
@@ -317,10 +211,19 @@ Returns the earliest hashtag (by index) in the input string.
 Returns an object with:
 
 - `type`: `"wrapped"` or `"unwrapped"`
-
 - `tag`: The unescaped hashtag content
 
 Returns `null` if no valid hashtag is found.
+
+**Example:**
+
+```typescript
+findFirstHashtag("Check out #version2.0 today!");
+// → { type: "unwrapped", tag: "version2.0" }
+
+findFirstHashtag("Use #<my tag> here");
+// → { type: "wrapped", tag: "my tag" }
+```
 
 ### `findHashtagWrappedTags(input: string): WrappedHashtag[]`
 
@@ -329,37 +232,62 @@ Finds all wrapped `#<...>` tags in the input string.
 Returns an array of objects with:
 
 - `start`: Starting index of the tag (at the `#`)
-
 - `end`: Ending index (after the `>`)
-
 - `content`: The raw (still-escaped) content
+
+**Example:**
+
+```typescript
+findHashtagWrappedTags("See #<tag1> and #<tag2>");
+// → [
+//     { start: 4, end: 11, content: "tag1" },
+//     { start: 16, end: 23, content: "tag2" }
+//    ]
+```
 
 ### `unescapeHashtagContent(content: string): string`
 
-Removes escape sequences from hashtag content. Handles both wrapped and
-unwrapped escaping rules by removing one backslash from each `\X` pair.
+Removes escape sequences from hashtag content. Handles both wrapped and unwrapped escaping rules by removing one backslash from each `\X` pair.
+
+**Example:**
+
+```typescript
+unescapeHashtagContent("foo\\#bar"); // → "foo#bar"
+unescapeHashtagContent("foo\\>bar"); // → "foo>bar"
+unescapeHashtagContent("foo\\\\bar"); // → "foo\bar"
+```
 
 ### `hashtagForContent(content: string): string`
 
 Returns the correct hashtag syntax for given unescaped content.
 
-- Uses unwrapped syntax if possible (no strong terminators or angle
-  brackets)
-
+- Uses unwrapped syntax if possible (no strong terminators or angle brackets)
 - Escapes `\` and `#` in unwrapped form
+- Uses wrapped `#<...>` syntax otherwise
+- Escapes `\`, `>`, and `<` in wrapped form
 
-- Escapes consecutive identical punctuation to prevent doubling
-  interpretation
+**Example:**
 
-- Uses wrapped `#<...>` syntax otherwise, escaping `\` and `>`
+```typescript
+hashtagForContent("simple"); // → "#simple"
+hashtagForContent("foo#bar"); // → "#foo\\#bar"
+hashtagForContent("my tag"); // → "#<my tag>"
+hashtagForContent("a<b>c"); // → "#<a\\<b\\>c>"
+```
 
 ### `unwrappedTagRegex`
 
-A regex-like object exposing `exec()` for compatibility with legacy
-code. Finds the first unwrapped hashtag and returns a match array with:
+A regex-like object exposing `exec()` for compatibility with legacy code. Finds the first unwrapped hashtag and returns a match array with:
 
 - `[0]`: The full match including `#`
-
 - `[1]`: The raw content (still-escaped)
-
 - `index`: The starting position
+
+**Example:**
+
+```typescript
+const match = unwrappedTagRegex.exec("text #foo bar");
+// match[0] → "#foo"
+// match[1] → "foo"
+// match.index → 5
+```
