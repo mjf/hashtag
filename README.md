@@ -362,18 +362,13 @@ deno test
 
 ## Design Principles
 
-1. **Position Independence**: Hashtag interpretation is stable under
-   text transformations
-2. **Natural Punctuation**: Mid-identifier punctuation (`.`, `:`) is
-   allowed; sentence punctuation terminates
-3. **Explicit Control**: Backslash escaping provides precise control
-   when needed
-4. **Unicode First**: Full Unicode support with proper surrogate pair
-   handling
-5. **No Ambiguity**: Clear distinction between wrapped and unwrapped
-   forms
-6. **Deterministic**: Unique parse for any input via leftmost greedy
-   matching
+1. Hashtag interpretation is stable under text transformations
+2. Mid-identifier punctuation (`.`, `:`) is allowed; sentence
+   punctuation terminates
+3. Backslash escaping provides precise control when needed
+4. Full Unicode support with proper surrogate pair handling
+5. Clear distinction between wrapped and unwrapped forms
+6. Unique parse for any input via leftmost greedy matching
 
 ## License
 
