@@ -18,15 +18,15 @@ whitespace, control characters, or angle brackets.
 **ABNF Grammar:**
 
 ```abnf
-wrapped-hashtag   = unescaped-hash "<" wrapped-content ">"
-unescaped-hash    = "#"
-                  ; where preceded by even number of backslashes (including zero)
-wrapped-content   = 1*wrapped-char
-wrapped-char      = escape-pair / regular-char
-escape-pair       = "\" ANY
-regular-char      = %x00-3D / %x3F-5B / %x5D-10FFFF
-                  ; any character except ">" and "\" (which must be escaped)
-ANY               = %x00-10FFFF
+wrapped-hashtag = unescaped-hash "<" wrapped-content ">"
+unescaped-hash  = "#"
+                ; preceded by even number of backslashes (including zero)
+wrapped-content = 1*wrapped-char
+wrapped-char    = escape-pair / regular-char
+escape-pair     = "\" ANY
+regular-char    = %x00-3D / %x3F-5B / %x5D-10FFFF
+                ; any character except ">" and "\" (must be escaped)
+ANY             = %x00-10FFFF
 ```
 
 **Escaping rules:**
@@ -65,25 +65,25 @@ delimiters when content contains no problematic characters.
 **ABNF Grammar:**
 
 ```abnf
-unwrapped-hashtag = unescaped-hash unwrapped-content
-unescaped-hash    = "#"
-                  ; where preceded by even number of backslashes
-                  ; and not followed by "<"
-unwrapped-content = 1*unwrapped-char
-unwrapped-char    = escape-pair / punct-continuation / regular-char
-escape-pair       = "\" ANY
-                  ; always continues, never terminates
+unwrapped-hashtag  = unescaped-hash unwrapped-content
+unescaped-hash     = "#"
+                   ; where preceded by even number of backslashes
+                   ; and not followed by "<"
+unwrapped-content  = 1*unwrapped-char
+unwrapped-char     = escape-pair / punct-continuation / regular-char
+escape-pair        = "\" ANY
+                   ; always continues, never terminates
 punct-continuation = PUNCT non-terminator
-                  ; punctuation followed by continuing character
-regular-char      = %x21-22 / %x24-2B / %x2D-3A / %x3D / %x40-10FFFF
-                  ; excludes: STRONG, ANGLE, HASH, PUNCT, BACKSLASH
+                   ; punctuation followed by continuing character
+regular-char       = %x21-22 / %x24-2B / %x2D-3A / %x3D / %x40-10FFFF
+                   ; excludes: STRONG, ANGLE, HASH, PUNCT, BACKSLASH
 
-PUNCT             = "." / "," / ";" / ":" / "!" / "?"
-STRONG            = %x00-20 / %x7F-9F
-                  ; whitespace, control characters, DEL, C1 controls
-ANGLE             = "<" / ">"
-non-terminator    = regular-char
-                  ; any character that doesn't terminate
+PUNCT              = "." / "," / ";" / ":" / "!" / "?"
+STRONG             = %x00-20 / %x7F-9F
+                   ; whitespace, control characters, DEL, C1 controls
+ANGLE              = "<" / ">"
+non-terminator     = regular-char
+                   ; any character that doesn't terminate
 ```
 
 **Termination rules:**
