@@ -1,0 +1,9 @@
+arrowParens: always
+bracketSpacing: true
+embeddedLanguageFormatting: auto
+singleQuote: true
+printWidth: 72
+proseWrap: always
+trailingComma: all
+
+# vi:ft=yaml
