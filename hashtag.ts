@@ -125,18 +125,14 @@ function parseUnwrappedFrom(
       break;
     }
 
-    if (isStrongTerminator(cu) || isAngleBracket(cu) || cu === HASH) {
+    if (isStrongTerminator(cu) || cu === HASH) {
       break;
     }
 
     if (isPunctuation(cu)) {
       if (pos + 1 >= n) break;
       const next = input.charCodeAt(pos + 1);
-      if (
-        isStrongTerminator(next) ||
-        isPunctuation(next) ||
-        isAngleBracket(next)
-      ) {
+      if (isStrongTerminator(next) || isPunctuation(next)) {
         break;
       }
       pos += 1;
@@ -196,6 +192,9 @@ function findFirstUnwrapped(
 
     const parsed = parseUnwrappedFrom(input, hashIndex + 1);
     if (parsed) {
+      const unescaped = unescapeHashtagContent(parsed.content);
+      if (unescaped.length === 0) return null;
+
       return { index: hashIndex, content: parsed.content };
     }
     pos = hashIndex + 1;
@@ -247,9 +246,12 @@ export function findFirstHashtag(input: string): FirstHashtag | null {
     } else {
       const parsed = parseUnwrappedFrom(input, hashIndex + 1);
       if (parsed) {
+        const unescapedTag = unescapeHashtagContent(parsed.content);
+        if (unescapedTag.length === 0) return null;
+
         return {
           type: 'unwrapped',
-          tag: unescapeHashtagContent(parsed.content),
+          tag: unescapedTag,
         };
       }
       pos = hashIndex + 1;
@@ -266,7 +268,7 @@ function canBeUnwrapped(content: string): boolean {
     i += isSurrogatePair(content, i) ? 2 : 1
   ) {
     const cu = content.charCodeAt(i);
-    if (isStrongTerminator(cu) || isAngleBracket(cu)) {
+    if (isStrongTerminator(cu)) {
       return false;
     }
   }
@@ -278,7 +280,10 @@ function escapeForUnwrapped(content: string): string {
 
   for (let i = 0; i < content.length; ) {
     const ch = content[i];
-    if (ch === '\\' || ch === '#') {
+    if (i === 0 && ch === '<') {
+      result += '\\' + ch;
+      i += 1;
+    } else if (ch === '\\' || ch === '#') {
       result += '\\' + ch;
       i += 1;
     } else if (isSurrogatePair(content, i)) {

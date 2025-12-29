@@ -34,28 +34,25 @@ ANY             = %x00-10FFFF
 - Backslash (`\`) followed by any character forms an escape pair
 - The backslash is consumed; the following character appears literally
   in unescaped content
-- Must escape: `\` as `\\` and `>` as `\>`
-- Should escape: `<` as `\<` (for symmetry in synthesis, though not
-  required for parsing)
-- Empty content (`#<>`) is invalid
+- Must escape: `\` as `\\`, `<` as `\<`, and `>` as `\>`
 
 **Examples:**
 
 | Example            | Yields         |
 | ------------------ | -------------- |
-| `#<simple>`        | "simple"       |
-| `#<with\>bracket>` | "with>bracket" |
-| `#<back\\slash>`   | "back\slash"   |
-| `#<<nested>`       | "<nested"      |
-| `#<\<escaped>`     | "<escaped"     |
+| `#<simple>`        | `simple`       |
+| `#<with\>bracket>` | `with>bracket` |
+| `#<back\\slash>`   | `back\slash`   |
+| `#<<nested>`       | `<nested`      |
+| `#<\<escaped>`     | `<escaped`     |
 
 With surrounding text:
 
 | Example                  | Yields     |
 | ------------------------ | ---------- |
-| `Use #<my tag> here.`    | "my tag"   |
-| `The #<a\>b> format.`    | "a>b"      |
-| `See #<<special>> data.` | "<special" |
+| `Use #<my tag> here.`    | `my tag`   |
+| `The #<a\>b> format.`    | `a>b`      |
+| `See #<<special>> data.` | `<special` |
 
 ### Unwrapped Form: `#content`
 
@@ -75,13 +72,14 @@ escape-pair        = "\" ANY
                    ; always continues, never terminates
 punct-continuation = PUNCT non-terminator
                    ; punctuation followed by continuing character
-regular-char       = %x21-22 / %x24-2B / %x2D-3A / %x3D / %x40-10FFFF
-                   ; excludes: STRONG, ANGLE, HASH, PUNCT, BACKSLASH
+regular-char       = %x22 / %x24-2B / %x2D / %x2F-39 / %x3D
+                   / %x3C-3E / %x40-10FFFF
+                   ; excludes: STRONG, HASH, PUNCT, BACKSLASH
+                   ; Note: < and > are valid characters in unwrapped form
 
 PUNCT              = "." / "," / ";" / ":" / "!" / "?"
 STRONG             = %x00-20 / %x7F-9F
                    ; whitespace, control characters, DEL, C1 controls
-ANGLE              = "<" / ">"
 non-terminator     = regular-char
                    ; any character that doesn't terminate
 ```
@@ -94,13 +92,15 @@ Content extends maximally until encountering:
    - Whitespace and control characters (code points ≤ `0x20`: SPACE,
      TAB, CR, LF, all C0 controls)
    - Extended control characters (`0x7F`–`0x9F`: DEL and C1 controls)
-   - Angle brackets (`<`, `>`)
    - Hash character (`#`)
+   - _(Note: Angle brackets `<` and `>` are valid content characters in
+     the unwrapped form and do not terminate the tag. They only trigger
+     the wrapped form if they immediately follow the `#`.)_
 
 2. **Punctuation** (`.`, `,`, `;`, `:`, `!`, `?`) with lookahead:
    - Terminates if followed by: strong terminator, another punctuation,
-     angle bracket, or end-of-input
-   - Continues if followed by other characters
+     or end-of-input
+   - Continues if followed by other characters (regular characters)
 
 This lookahead design mirrors natural language: sentence-ending
 punctuation appears before whitespace or EOI, while mid-identifier
@@ -120,67 +120,74 @@ Punctuation with lookahead:
 
 | Example        | Yields        | Remark                         |
 | -------------- | ------------- | ------------------------------ |
-| `#foo.bar`     | "foo.bar"     | period continues before 'b'    |
-| `#version2.0`  | "version2.0"  | period continues before '0'    |
-| `#cool!`       | "cool"        | exclamation at EOI terminates  |
-| `#what?now`    | "what?now"    | question continues before 'n'  |
-| `#foo:bar:baz` | "foo:bar:baz" | colons continue before letters |
+| `#foo.bar`     | `foo.bar`     | period continues before 'b'    |
+| `#version2.0`  | `version2.0`  | period continues before '0'    |
+| `#cool!`       | `cool`        | exclamation at EOI terminates  |
+| `#what?now`    | `what?now`    | question continues before 'n'  |
+| `#foo:bar:baz` | `foo:bar:baz` | colons continue before letters |
 
 With surrounding text:
 
 | Example                    | Yields        |
 | -------------------------- | ------------- |
-| `Use #foo.bar here.`       | "foo.bar"     |
-| `Try #version2.0 now.`     | "version2.0"  |
-| `This is #cool! Right?`    | "cool"        |
-| `Ask #what?now please.`    | "what?now"    |
-| `See #foo:bar:baz format.` | "foo:bar:baz" |
+| `Use #foo.bar here.`       | `foo.bar`     |
+| `Try #version2.0 now.`     | `version2.0`  |
+| `This is #cool! Right?`    | `cool`        |
+| `Ask #what?now please.`    | `what?now`    |
+| `See #foo:bar:baz format.` | `foo:bar:baz` |
 
 Backslash escaping:
 
 | Example         | Yields        | Remark                    |
 | --------------- | ------------- | ------------------------- |
-| `#foo\,bar`     | "foo,bar"     | comma included via escape |
-| `#with\ space`  | "with space"  | space included via escape |
-| `#has\<bracket` | "has<bracket" | angle bracket included    |
-| `#foo\#bar`     | "foo#bar"     | hash included             |
-| `#foo\\bar`     | "foo\bar"     | backslash included        |
-| `#tag\.`        | "tag"         | backslash consumed at EOI |
+| `#foo\,bar`     | `foo,bar`     | comma included via escape |
+| `#with\ space`  | `with space`  | space included via escape |
+| `#has\<bracket` | `has<bracket` | angle bracket included    |
+| `#foo\#bar`     | `foo#bar`     | hash included             |
+| `#foo\\bar`     | `foo\bar`     | backslash included        |
+| `#tag\.`        | `tag`         | backslash consumed at EOI |
 
 With surrounding text:
 
 | Example                     | Yields        |
 | --------------------------- | ------------- |
-| `Use #with\ space here.`    | "with space"  |
-| `The #has\<bracket format.` | "has<bracket" |
-| `Try #foo\#bar method.`     | "foo#bar"     |
-| `See #foo\\bar usage.`      | "foo\bar"     |
+| `Use #with\ space here.`    | `with space`  |
+| `The #has\<bracket format.` | `has<bracket` |
+| `Try #foo\#bar method.`     | `foo#bar`     |
+| `See #foo\\bar usage.`      | `foo\bar`     |
 
 Punctuation termination:
 
 | Example     | Yields | Remark                             |
 | ----------- | ------ | ---------------------------------- |
-| `#tag,`     | "tag"  | comma at EOI terminates            |
-| `#tag!`     | "tag"  | exclamation at EOI terminates      |
-| `#foo, bar` | "foo"  | comma before space terminates      |
-| `#foo. bar` | "foo"  | period before space terminates     |
-| `#foo!!`    | "foo"  | first ! terminates before second ! |
+| `#tag,`     | `tag`  | comma at EOI terminates            |
+| `#tag!`     | `tag`  | exclamation at EOI terminates      |
+| `#foo, bar` | `foo`  | comma before space terminates      |
+| `#foo. bar` | `foo`  | period before space terminates     |
+| `#foo!!`    | `foo`  | first ! terminates before second ! |
 
 Unicode support:
 
 | Example          | Yields          |
 | ---------------- | --------------- |
-| `#café.français` | "café.français" |
-| `#tag:Příliš`    | "tag:Příliš"    |
-| `#price:€50`     | "price:€50"     |
+| `#café.français` | `café.français` |
+| `#tag:Příliš`    | `tag:Příliš`    |
+| `#price:€50`     | `price:€50`     |
 
 With surrounding text:
 
 | Example                     | Yields          |
 | --------------------------- | --------------- |
-| `Use #café.français style.` | "café.français" |
-| `See #tag:Příliš docs.`     | "tag:Příliš"    |
-| `Check #price:€50 rate.`    | "price:€50"     |
+| `Use #café.français style.` | `café.français` |
+| `See #tag:Příliš docs.`     | `tag:Příliš`    |
+| `Check #price:€50 rate.`    | `price:€50`     |
+
+Angle brackets in unwrapped form:
+
+| Example    | Yields    | Remark                          |
+| ---------- | --------- | ------------------------------- |
+| `#foo<bar` | `foo<bar` | angle bracket is regular char   |
+| `#tag>a<b` | `tag>a<b` | multiple angle brackets allowed |
 
 ## Parsing Semantics
 
@@ -204,7 +211,7 @@ followed by a low surrogate (U+DC00–U+DFFF) represents a single code
 point and is processed as an indivisible unit.
 
 **Empty Content:** Both forms reject empty content. `#<>` and a lone `#`
-(followed by a terminator or EOI) are invalid.
+are invalid.
 
 ## API
 
@@ -214,8 +221,8 @@ Returns the earliest hashtag (by position) in the input string.
 
 **Returns:**
 
-- `{ type: "wrapped", tag: string }` for wrapped hashtags
-- `{ type: "unwrapped", tag: string }` for unwrapped hashtags
+- `{ type: 'wrapped', tag: string }` for wrapped hashtags
+- `{ type: 'unwrapped', tag: string }` for unwrapped hashtags
 - `null` if no valid hashtag found
 
 The `tag` field contains unescaped content.
@@ -224,10 +231,10 @@ The `tag` field contains unescaped content.
 
 ```typescript
 findFirstHashtag('Check out #version2.0 today!');
-// yields { type: "unwrapped", tag: "version2.0" }
+// yields { type: 'unwrapped', tag: 'version2.0' }
 
 findFirstHashtag('Use #<my tag> here');
-// yields { type: "wrapped", tag: "my tag" }
+// yields { type: 'wrapped', tag: 'my tag' }
 
 findFirstHashtag('No tags here');
 // yields null
@@ -248,9 +255,9 @@ Finds all wrapped `#<...>` tags in the input string.
 ```typescript
 findHashtagWrappedTags('See #<tag1> and #<tag2>');
 // yields [
-//     { start: 4, end: 11, content: "tag1" },
-//     { start: 16, end: 23, content: "tag2" }
-//    ]
+//   { start:  4, end: 11, content: 'tag1' },
+//   { start: 16, end: 23, content: 'tag2' }
+// ]
 ```
 
 ### `unescapeHashtagContent(content: string): string`
@@ -267,10 +274,10 @@ pair as the literal character `X`.
 **Example:**
 
 ```typescript
-unescapeHashtagContent('foo\\#bar'); // yields "foo#bar"
-unescapeHashtagContent('foo\\>bar'); // yields "foo>bar"
-unescapeHashtagContent('foo\\\\bar'); // yields "foo\bar"
-unescapeHashtagContent('foo\\'); // yields "foo"
+unescapeHashtagContent('foo\\#bar');  // yields `foo#bar`
+unescapeHashtagContent('foo\\>bar');  // yields `foo>bar`
+unescapeHashtagContent('foo\\\\bar'); // yields `foo\bar`
+unescapeHashtagContent('foo\\');      // yields `foo`
 ```
 
 ### `hashtagForContent(content: string): string`
@@ -279,21 +286,23 @@ Synthesizes the correct hashtag syntax for given unescaped content.
 
 **Algorithm:**
 
-1. If content contains only characters allowed in unwrapped form (no
-   whitespace, control characters, or angle brackets):
+1. If content contains no whitespace or control characters:
    - Use unwrapped syntax `#content`
    - Escape `\` as `\\` and `#` as `\#`
+   - **Edge Case:** If the content starts with `<`, escape it as `\<` to
+     prevent the parser from interpreting it as a wrapped tag.
 2. Otherwise:
    - Use wrapped syntax `#<content>`
-   - Escape `\` as `\\`, `>` as `\>`, and `<` as `\<`
+   - Escape `\` as `\\`, `<` as `\<`, and `>` as `\>`
 
 **Example:**
 
 ```typescript
-hashtagForContent('simple'); // yields "#simple"
-hashtagForContent('foo#bar'); // yields "#foo\\#bar"
-hashtagForContent('my tag'); // yields "#<my tag>"
-hashtagForContent('a<b>c'); // yields "#<a\\<b\\>c>"
+hashtagForContent('simple');  // yields `#simple`
+hashtagForContent('foo#bar'); // yields `#foo\\#bar`
+hashtagForContent('my tag');  // yields `#<my tag>`
+hashtagForContent('a<b>c');   // yields `#a<b>c`
+hashtagForContent('<start');  // yields `#\<start>`
 ```
 
 **Roundtrip Property:** For any content `c`:
@@ -314,19 +323,9 @@ unwrapped hashtag.
 
 ```typescript
 const match = unwrappedTagRegex.exec('text #foo bar');
-// match[0] yields "#foo"
-// match[1] yields "foo"
+// match[0] yields `#foo`
+// match[1] yields `foo`
 // match.index yields 5
-```
-
-## Installation
-
-```bash
-# Using Deno
-deno add @your-org/hashtag-parser
-
-# Or import directly
-import { findFirstHashtag } from "https://deno.land/x/hashtag_parser/mod.ts";
 ```
 
 ## Usage Examples
@@ -336,22 +335,22 @@ import { findFirstHashtag, hashtagForContent } from './hashtag.ts';
 
 // Find hashtags in text
 const result = findFirstHashtag('Check out #version2.0 today!');
-console.log(result?.tag); // "version2.0"
+console.log(result?.tag); // `version2.0`
 
 // Handle punctuation
 const emphatic = findFirstHashtag('This is #awesome! Right?');
-console.log(emphatic?.tag); // "awesome"
+console.log(emphatic?.tag); // `awesome`
 
 // Escape for synthesis
 const tag = hashtagForContent('foo.bar');
-console.log(tag); // "#foo.bar"
+console.log(tag); // `#foo.bar`
 
 const tagWithSpace = hashtagForContent('my tag');
-console.log(tagWithSpace); // "#<my tag>"
+console.log(tagWithSpace); // `#<my tag>`
 
 // Escaped characters
 const escaped = findFirstHashtag('#foo\\#bar');
-console.log(escaped?.tag); // "foo#bar"
+console.log(escaped?.tag); // `foo#bar`
 ```
 
 ## Testing

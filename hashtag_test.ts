@@ -178,15 +178,10 @@ describe('Hashtag synthesis (hashtagForContent)', () => {
     testSynth('\\foo', '#\\\\foo');
   });
 
-  it('wrapped forced for disallowed', () => {
+  it('wrapped forced for disallowed (spaces/controls)', () => {
+    testSynth('a b>c', '#<a b\\>c>');
     testSynth('foo bar', '#<foo bar>');
-    testSynth('foo,bar', '#foo,bar');
-    testSynth('abc:def', '#abc:def');
-    testSynth('foo.bar', '#foo.bar');
-    testSynth('a<b>c', '#<a\\<b\\>c>');
-    testSynth('a\\b>c', '#<a\\\\b\\>c>');
-    testSynth('foo<>', '#<foo\\<\\>>');
-    testSynth('foo#bar?', '#foo\\#bar?');
+    testSynth('a<b>c', '#a<b>c');
   });
 });
 
@@ -210,10 +205,8 @@ describe('Unicode and edge cases', () => {
   });
 
   it('lone trailing backslash in unwrapped', () => {
-    const m = unwrappedTagRegex.exec('#foo\\');
-    expect(m).not.toBeNull();
-    expect(m![1]).toBe('foo\\');
-    expect(unescapeHashtagContent(m![1])).toBe('foo');
+    testFirst('#foo\\', 'unwrapped', 'foo');
+    testUnwrappedRegex('#foo\\', 'foo\\');
   });
 });
 
@@ -322,6 +315,118 @@ describe('Synthesis additional checks', () => {
   });
 
   it('synthesis with angle brackets escaped in wrapped', () => {
-    testSynth('a<b>c', '#<a\\<b\\>c>');
+    testSynth('a <b> c', '#<a \\<b\\> c>');
+  });
+
+  it('synthesis angle brackets unwrapped', () => {
+    testSynth('a<b>c', '#a<b>c');
+  });
+});
+
+describe('Unwrapped angle brackets support', () => {
+  it('basic unwrapped < and >', () => {
+    testUnwrappedRegex('#foo<bar', 'foo<bar');
+    testUnwrappedRegex('#tag>a<b', 'tag>a<b');
+    testFirst('Text #foo<bar text', 'unwrapped', 'foo<bar');
+  });
+
+  it('punctuation continues before angle bracket', () => {
+    testUnwrappedRegex('#a!<b', 'a!<b');
+    testFirst('Check #a!<b out.', 'unwrapped', 'a!<b');
+  });
+
+  it('EOI with angle bracket', () => {
+    testUnwrappedRegex('#tag<', 'tag<');
+    testFirst('Last #tag<', 'unwrapped', 'tag<');
+  });
+});
+
+describe('Synthesis fixes for angle brackets', () => {
+  it('unwrapped syntax allowed for < and >', () => {
+    testSynth('a<b>c', '#a<b>c');
+  });
+
+  it('leading < is escaped in unwrapped synthesis', () => {
+    testSynth('<start', '#\\<start');
+    const parsed = findFirstHashtag('#\\<start');
+    expect(parsed).not.toBeNull();
+    expect(parsed?.tag).toBe('<start');
+  });
+
+  it('trailing > in unwrapped', () => {
+    testSynth('end>', '#end>');
+    const parsed = findFirstHashtag('#end>');
+    expect(parsed).not.toBeNull();
+    expect(parsed?.tag).toBe('end>');
+  });
+});
+
+describe('Strict Empty Content Rejection', () => {
+  it('reject hash + backslash at EOI', () => {
+    testFirst('#\\', null);
+    testUnwrappedRegex('#\\', null);
+  });
+
+  it('accept hash + escaped backslash', () => {
+    testFirst('#\\\\', 'unwrapped', '\\');
+    testUnwrappedRegex('#\\\\', '\\\\');
+  });
+});
+
+describe('Punctuation lookahead granularity', () => {
+  it('punctuation continues if followed by regular char', () => {
+    testUnwrappedRegex('#foo!a', 'foo!a');
+    testFirst('Tag #foo!a here', 'unwrapped', 'foo!a');
+  });
+
+  it('punctuation terminates if followed by punctuation', () => {
+    testUnwrappedRegex('#foo!!', 'foo');
+    testUnwrappedRegex('#foo..', 'foo');
+    testFirst('Tags #foo!! and #bar..', 'unwrapped', 'foo');
+  });
+
+  it('colon terminates at EOI but continues before letter', () => {
+    testUnwrappedRegex('#tag:', 'tag');
+    testUnwrappedRegex('#tag:a', 'tag:a');
+  });
+});
+
+describe('Synthesis special characters', () => {
+  it('synthesis of angle brackets only', () => {
+    testSynth('<>', '#\\<>');
+    testSynth('<<', '#\\<<');
+    testSynth('>>', '#>>');
+    testSynth('<<<', '#\\<<<');
+  });
+});
+
+describe('Complex angle bracket unwrapped', () => {
+  it('mixed angle brackets and text', () => {
+    testUnwrappedRegex('#\\<a>b<c>d', '\\<a>b<c>d');
+    testFirst('Check #\\<a>b<c>d out', 'unwrapped', '<a>b<c>d');
+  });
+
+  it('leading multiple angle brackets', () => {
+    testSynth('<<<a>', '#\\<<<a>');
+
+    const wrappedTag = findFirstHashtag('#<<<a>');
+    expect(wrappedTag?.type).toBe('wrapped');
+    expect(wrappedTag?.tag).toBe('<<a');
+
+    const unwrappedTag = findFirstHashtag('#\\<\\<\\<a>');
+    expect(unwrappedTag?.type).toBe('unwrapped');
+    expect(unwrappedTag?.tag).toBe('<<<a>');
+  });
+});
+
+describe('EOI (End of Input) Edge Cases', () => {
+  it('hash alone at EOI', () => {
+    testFirst('#', null);
+    testUnwrappedRegex('#', null);
+  });
+
+  it('wrapped trigger alone at EOI', () => {
+    testFirst('#<', null);
+    testWrapped('#<', []);
   });
 });
