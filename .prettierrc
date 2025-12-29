@@ -1,9 +1,9 @@
-arrowParens: always
+arrowParens: 'always'
 bracketSpacing: true
-embeddedLanguageFormatting: auto
+embeddedLanguageFormatting: 'off'
 singleQuote: true
 printWidth: 72
-proseWrap: always
-trailingComma: all
+proseWrap: 'always'
+trailingComma: 'all'
 
 # vi:ft=yaml
