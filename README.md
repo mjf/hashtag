@@ -89,8 +89,8 @@ non-terminator     = regular-char
 Content extends maximally until encountering:
 
 1. **Strong terminators** (immediate, unconditional):
-   - Whitespace and control characters (code points ≤ `0x20`: SPACE,
-     TAB, CR, LF, all C0 controls)
+   - Whitespace and control characters (code points `0x00`-`0x20`:
+     SPACE, TAB, CR, LF, all C0 controls)
    - Extended control characters (`0x7F`–`0x9F`: DEL and C1 controls)
    - Hash character (`#`)
    - _(Note: Angle brackets `<` and `>` are valid content characters in
@@ -99,7 +99,7 @@ Content extends maximally until encountering:
 
 2. **Punctuation** (`.`, `,`, `;`, `:`, `!`, `?`) with lookahead:
    - Terminates if followed by: strong terminator, another punctuation,
-     or end-of-input
+     or end-of-input (EOI)
    - Continues if followed by other characters (regular characters)
 
 This lookahead design mirrors natural language: sentence-ending
@@ -138,23 +138,21 @@ With surrounding text:
 
 Backslash escaping:
 
-| Example         | Yields        | Remark                    |
-| --------------- | ------------- | ------------------------- |
-| `#foo\,bar`     | `foo,bar`     | comma included via escape |
-| `#with\ space`  | `with space`  | space included via escape |
-| `#has\<bracket` | `has<bracket` | angle bracket included    |
-| `#foo\#bar`     | `foo#bar`     | hash included             |
-| `#foo\\bar`     | `foo\bar`     | backslash included        |
-| `#tag\.`        | `tag`         | backslash consumed at EOI |
+| Example        | Yields       | Remark                    |
+| -------------- | ------------ | ------------------------- |
+| `#foo\,bar`    | `foo,bar`    | comma included via escape |
+| `#with\ space` | `with space` | space included via escape |
+| `#foo\#bar`    | `foo#bar`    | hash included             |
+| `#foo\\bar`    | `foo\bar`    | backslash included        |
+| `#tag\.`       | `tag`        | backslash consumed at EOI |
 
 With surrounding text:
 
-| Example                     | Yields        |
-| --------------------------- | ------------- |
-| `Use #with\ space here.`    | `with space`  |
-| `The #has\<bracket format.` | `has<bracket` |
-| `Try #foo\#bar method.`     | `foo#bar`     |
-| `See #foo\\bar usage.`      | `foo\bar`     |
+| Example                  | Yields       |
+| ------------------------ | ------------ |
+| `Use #with\ space here.` | `with space` |
+| `Try #foo\#bar method.`  | `foo#bar`    |
+| `See #foo\\bar usage.`   | `foo\bar`    |
 
 Punctuation termination:
 
