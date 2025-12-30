@@ -66,7 +66,7 @@ unwrapped-hashtag  = unescaped-hash unwrapped-text
 unescaped-hash     = "#"
                    ; preceded by even number of backslashes
                    ; and NOT followed by an unescaped "<"
-unwrapped-text  = 1*unwrapped-char
+unwrapped-text     = 1*unwrapped-char
 unwrapped-char     = escape-pair / punct-continuation / regular-char
 escape-pair        = "\" ANY
                    ; always continues, never terminates
