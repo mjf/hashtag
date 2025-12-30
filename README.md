@@ -219,8 +219,8 @@ Returns the earliest hashtag (by position) in the input string.
 
 **Returns:**
 
-- `{ type: 'wrapped', tag: string }` for wrapped hashtags
-- `{ type: 'unwrapped', tag: string }` for unwrapped hashtags
+- `{ type: 'wrapped', text: string }` for wrapped hashtags
+- `{ type: 'unwrapped', text: string }` for unwrapped hashtags
 - `null` if no valid hashtag found
 
 The `tag` field contains unescaped text.
@@ -229,10 +229,10 @@ The `tag` field contains unescaped text.
 
 ```typescript
 findHashtag('Check out #version2.0 today!');
-// yields { type: 'unwrapped', tag: 'version2.0' }
+// yields { type: 'unwrapped', text: 'version2.0' }
 
 findHashtag('Use #<my tag> here');
-// yields { type: 'wrapped', tag: 'my tag' }
+// yields { type: 'wrapped', text: 'my tag' }
 
 findHashtag('No tags here');
 // yields null
