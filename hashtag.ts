@@ -5,8 +5,8 @@ export type WrappedHashtag = {
 };
 
 export type Hashtag =
-  | { type: 'wrapped'; tag: string }
-  | { type: 'unwrapped'; tag: string };
+  | { type: 'wrapped'; text: string }
+  | { type: 'unwrapped'; text: string };
 
 function isStrongTerminator(code: number): boolean {
   // 0x20 SP
@@ -232,7 +232,7 @@ export function findHashtag(input: string): Hashtag | null {
   for (const item of scanAllHashtags(input)) {
     return {
       type: item.type,
-      tag: unescapeHashtagText(item.rawText),
+      text: unescapeHashtagText(item.rawText),
     };
   }
   return null;

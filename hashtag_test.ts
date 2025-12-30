@@ -19,7 +19,7 @@ function assertWrappedTags(input: string, expected: string[]) {
 function assertFirstTag(
   input: string,
   type: 'wrapped' | 'unwrapped' | null,
-  tag?: string,
+  text?: string,
 ) {
   const res = findHashtag(input);
   if (type === null) {
@@ -27,7 +27,7 @@ function assertFirstTag(
   } else {
     expect(res).not.toBeNull();
     expect(res!.type).toBe(type);
-    expect(res!.tag).toBe(tag);
+    expect(res!.text).toBe(text);
   }
 }
 
@@ -100,7 +100,7 @@ describe('Tag Synthesis', () => {
     const str = createHashtag(text);
     const res = findHashtag(str);
     expect(res).not.toBeNull();
-    expect(res?.tag).toBe(text);
+    expect(res?.text).toBe(text);
   });
 });
 
