@@ -223,7 +223,7 @@ Returns the earliest hashtag (by position) in the input string.
 - `{ type: 'unwrapped', text: string }` for unwrapped hashtags
 - `null` if no valid hashtag found
 
-The `tag` field contains unescaped text.
+The `text` field contains unescaped text.
 
 **Example:**
 
