@@ -21,7 +21,7 @@ whitespace, control characters, or angle brackets.
 wrapped-hashtag = unescaped-hash "<" wrapped-text ">"
 unescaped-hash  = "#"
                 ; preceded by even number of backslashes (including zero)
-wrapped-text = 1*wrapped-char
+wrapped-text    = 1*wrapped-char
 wrapped-char    = escape-pair / regular-char
 escape-pair     = "\" ANY
 regular-char    = %x00-3D / %x3F-5B / %x5D-10FFFF
