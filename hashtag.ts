@@ -316,7 +316,6 @@ function createHashtagRegExp(filterType?: HashtagType): {
     _iterator: null as Iterator<ScanResult> | null,
     _currentInput: null as string | null,
   };
-
   return {
     get lastIndex(): number {
       return state.lastIndex;
@@ -350,7 +349,6 @@ function createHashtagRegExp(filterType?: HashtagType): {
           item.type === HashtagType.Wrapped
             ? `#<${item.rawText}>`
             : `#${item.rawText}`;
-
         const execResult: ExecResult = [fullMatch, item.rawText];
         if (!filterType) {
           execResult.push(item.type);
