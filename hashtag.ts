@@ -4,9 +4,14 @@ export type WrappedHashtag = {
   text: string;
 };
 
+export enum HashtagType {
+  Unwrapped = 'unwrapped',
+  Wrapped = 'wrapped',
+}
+
 export type Hashtag =
-  | { type: 'wrapped'; text: string }
-  | { type: 'unwrapped'; text: string };
+  | { type: HashtagType.Wrapped; text: string }
+  | { type: HashtagType.Unwrapped; text: string };
 
 function isStrongTerminator(code: number): boolean {
   // 0x20 SP
@@ -124,7 +129,7 @@ function extractUnwrappedTag(
 }
 
 interface ScanResult {
-  type: 'wrapped' | 'unwrapped';
+  type: HashtagType;
   start: number;
   end: number;
   rawText: string;
@@ -157,7 +162,7 @@ function* scanAllHashtags(input: string): Generator<ScanResult> {
           const parsed = extractWrappedTag(input, hashIndex);
           if (parsed) {
             yield {
-              type: 'wrapped',
+              type: HashtagType.Wrapped,
               start: hashIndex,
               end: parsed.end,
               rawText: parsed.text,
@@ -175,7 +180,7 @@ function* scanAllHashtags(input: string): Generator<ScanResult> {
           const unescaped = unescapeHashtagText(parsed.text);
           if (unescaped.length > 0) {
             yield {
-              type: 'unwrapped',
+              type: HashtagType.Unwrapped,
               start: hashIndex,
               end: parsed.end,
               rawText: parsed.text,
@@ -198,7 +203,7 @@ function* scanAllHashtags(input: string): Generator<ScanResult> {
 export function findWrappedHashtags(input: string): WrappedHashtag[] {
   const result: WrappedHashtag[] = [];
   for (const item of scanAllHashtags(input)) {
-    if (item.type === 'wrapped') {
+    if (item.type === HashtagType.Wrapped) {
       result.push({
         start: item.start,
         end: item.end,
@@ -301,7 +306,7 @@ export function createHashtag(text: string): string {
 
 type ExecResult = Array<string> & { index?: number };
 
-function createHashtagRegExp(filterType?: 'wrapped' | 'unwrapped'): {
+function createHashtagRegExp(filterType?: HashtagType): {
   lastIndex: number;
   exec: (input: string) => ExecResult | null;
   reset: () => void;
@@ -342,7 +347,7 @@ function createHashtagRegExp(filterType?: 'wrapped' | 'unwrapped'): {
           continue;
         }
         const fullMatch =
-          item.type === 'wrapped'
+          item.type === HashtagType.Wrapped
             ? `#<${item.rawText}>`
             : `#${item.rawText}`;
 
@@ -362,6 +367,10 @@ function createHashtagRegExp(filterType?: 'wrapped' | 'unwrapped'): {
   };
 }
 
-export const unwrappedHashtagRegExp = createHashtagRegExp('unwrapped');
-export const wrappedHashtagRegExp = createHashtagRegExp('wrapped');
+export const unwrappedHashtagRegExp = createHashtagRegExp(
+  HashtagType.Unwrapped,
+);
+export const wrappedHashtagRegExp = createHashtagRegExp(
+  HashtagType.Wrapped,
+);
 export const hashtagRegExp = createHashtagRegExp();

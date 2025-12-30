@@ -1,11 +1,12 @@
 import {
+  createHashtag,
   findHashtag,
   findWrappedHashtags,
-  createHashtag,
-  unescapeHashtagText,
-  wrappedHashtagRegExp,
-  unwrappedHashtagRegExp,
+  HashtagType,
   hashtagRegExp,
+  wrappedHashtagRegExp,
+  unescapeHashtagText,
+  unwrappedHashtagRegExp,
 } from './hashtag.ts';
 
 import { describe, it } from '@std/testing/bdd';
@@ -18,7 +19,7 @@ function assertWrappedTags(input: string, expected: string[]) {
 
 function assertFirstTag(
   input: string,
-  type: 'wrapped' | 'unwrapped' | null,
+  type: HashtagType.Wrapped | HashtagType.Unwrapped | null,
   text?: string,
 ) {
   const res = findHashtag(input);
@@ -281,42 +282,42 @@ describe('Complex Regex Iteration', () => {
     expect(m).not.toBeNull();
     expect(m![0]).toBe('#<long name>');
     expect(m![1]).toBe('long name');
-    expect(m![2]).toBe('wrapped');
+    expect(m![2]).toBe(HashtagType.Wrapped);
     expect(m!.index).toBe(3);
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
     expect(m![0]).toBe('#test\\#ing');
     expect(m![1]).toBe('test\\#ing');
-    expect(m![2]).toBe('unwrapped');
+    expect(m![2]).toBe(HashtagType.Unwrapped);
     expect(m!.index).toBe(16);
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
     expect(m![0]).toBe('#\\<magic>');
     expect(m![1]).toBe('\\<magic>');
-    expect(m![2]).toBe('unwrapped');
+    expect(m![2]).toBe(HashtagType.Unwrapped);
     expect(m!.index).toBe(29);
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
     expect(m![0]).toBe('#🚀.launch');
     expect(m![1]).toBe('🚀.launch');
-    expect(m![2]).toBe('unwrapped');
+    expect(m![2]).toBe(HashtagType.Unwrapped);
     expect(m!.index).toBe(42);
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
     expect(m![0]).toBe('#<skip>');
     expect(m![1]).toBe('skip');
-    expect(m![2]).toBe('wrapped');
+    expect(m![2]).toBe(HashtagType.Wrapped);
     expect(m!.index).toBe(56);
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
     expect(m![0]).toBe('#the\\ end');
     expect(m![1]).toBe('the\\ end');
-    expect(m![2]).toBe('unwrapped');
+    expect(m![2]).toBe(HashtagType.Unwrapped);
     expect(m!.index).toBe(68);
 
     m = regex.exec(input);
@@ -326,13 +327,13 @@ describe('Complex Regex Iteration', () => {
 
 describe('Finding First Tag', () => {
   it('prefers wrapped when trigger present', () => {
-    assertFirstTag('#<foo> #bar', 'wrapped', 'foo');
-    assertFirstTag('abc #<xyz> #tag', 'wrapped', 'xyz');
+    assertFirstTag('#<foo> #bar', HashtagType.Wrapped, 'foo');
+    assertFirstTag('abc #<xyz> #tag', HashtagType.Wrapped, 'xyz');
   });
 
   it('finds unwrapped tags', () => {
-    assertFirstTag('#foo', 'unwrapped', 'foo');
-    assertFirstTag('text #tag', 'unwrapped', 'tag');
+    assertFirstTag('#foo', HashtagType.Unwrapped, 'foo');
+    assertFirstTag('text #tag', HashtagType.Unwrapped, 'tag');
   });
 
   it('returns null when no tags found', () => {
@@ -342,44 +343,52 @@ describe('Finding First Tag', () => {
   });
 
   it('selects earliest tag by position', () => {
-    assertFirstTag('#foo and #<bar>', 'unwrapped', 'foo');
-    assertFirstTag('xxx #<bar> then #baz', 'wrapped', 'bar');
+    assertFirstTag('#foo and #<bar>', HashtagType.Unwrapped, 'foo');
+    assertFirstTag('xxx #<bar> then #baz', HashtagType.Wrapped, 'bar');
   });
 
   it('skips escaped hashes', () => {
-    assertFirstTag('\\#fake #real', 'unwrapped', 'real');
-    assertFirstTag('\\#fake #<wrapped> #u', 'wrapped', 'wrapped');
-    assertFirstTag('\\#one \\#two #three', 'unwrapped', 'three');
+    assertFirstTag('\\#fake #real', HashtagType.Unwrapped, 'real');
+    assertFirstTag(
+      '\\#fake #<wrapped> #u',
+      HashtagType.Wrapped,
+      HashtagType.Wrapped,
+    );
+    assertFirstTag(
+      '\\#one \\#two #three',
+      HashtagType.Unwrapped,
+      'three',
+    );
   });
 });
 
 describe('Resilience & Recovery', () => {
   it('skips hash followed by space', () => {
-    assertFirstTag('# #tag', 'unwrapped', 'tag');
-    assertFirstTag('text # #tag', 'unwrapped', 'tag');
+    assertFirstTag('# #tag', HashtagType.Unwrapped, 'tag');
+    assertFirstTag('text # #tag', HashtagType.Unwrapped, 'tag');
   });
 
   it('skips hash followed by strong terminator', () => {
-    assertFirstTag('#\n#tag', 'unwrapped', 'tag');
-    assertFirstTag('#\r\n#tag', 'unwrapped', 'tag');
+    assertFirstTag('#\n#tag', HashtagType.Unwrapped, 'tag');
+    assertFirstTag('#\r\n#tag', HashtagType.Unwrapped, 'tag');
   });
 
   it('handles consecutive hashes (##)', () => {
-    assertFirstTag('##tag', 'unwrapped', 'tag');
-    assertFirstTag('# #tag', 'unwrapped', 'tag');
+    assertFirstTag('##tag', HashtagType.Unwrapped, 'tag');
+    assertFirstTag('# #tag', HashtagType.Unwrapped, 'tag');
     assertFirstTag('##', null);
-    assertFirstTag('###tag', 'unwrapped', 'tag');
+    assertFirstTag('###tag', HashtagType.Unwrapped, 'tag');
   });
 
   it('handles hashes followed by punctuation', () => {
-    assertFirstTag('#..#tag', 'unwrapped', 'tag');
-    assertFirstTag('#..#tag', 'unwrapped', 'tag');
-    assertFirstTag('#!#tag', 'unwrapped', '!');
+    assertFirstTag('#..#tag', HashtagType.Unwrapped, 'tag');
+    assertFirstTag('#..#tag', HashtagType.Unwrapped, 'tag');
+    assertFirstTag('#!#tag', HashtagType.Unwrapped, '!');
   });
 
   it('recovers from complex invalid sequences', () => {
-    assertFirstTag('##foo', 'unwrapped', 'foo');
-    assertFirstTag('##foo#bar', 'unwrapped', 'foo');
+    assertFirstTag('##foo', HashtagType.Unwrapped, 'foo');
+    assertFirstTag('##foo#bar', HashtagType.Unwrapped, 'foo');
   });
 });
 
@@ -392,7 +401,7 @@ describe('Finding All Wrapped Tags', () => {
 
 describe('Unicode & Surrogates', () => {
   it('handles emoji in unwrapped tags', () => {
-    assertFirstTag('#😀 stuff', 'unwrapped', '😀');
+    assertFirstTag('#😀 stuff', HashtagType.Unwrapped, '😀');
     assertSynthesis('😀', '#😀');
     assertUnwrappedRegExp('#😀', '😀');
   });
@@ -404,13 +413,13 @@ describe('Unicode & Surrogates', () => {
 
   it('handles surrogate pairs at start', () => {
     assertUnwrappedRegExp('#😀x', '😀x');
-    assertFirstTag('#😀x?', 'unwrapped', '😀x');
+    assertFirstTag('#😀x?', HashtagType.Unwrapped, '😀x');
   });
 });
 
 describe('Boundaries & EOI', () => {
   it('handles start of line', () => {
-    assertFirstTag('#start', 'unwrapped', 'start');
+    assertFirstTag('#start', HashtagType.Unwrapped, 'start');
     assertUnwrappedRegExp('#line', 'line');
     assertFirstTag('\\#start', null);
     assertUnwrappedRegExp('\\#line', null);
@@ -418,16 +427,16 @@ describe('Boundaries & EOI', () => {
 
   it('handles end of line', () => {
     assertUnwrappedRegExp('#tail\nnext', 'tail');
-    assertFirstTag('#tail\nnext', 'unwrapped', 'tail');
+    assertFirstTag('#tail\nnext', HashtagType.Unwrapped, 'tail');
     assertUnwrappedRegExp('#tail\r\nnext', 'tail');
-    assertFirstTag('#tail\r\nnext', 'unwrapped', 'tail');
+    assertFirstTag('#tail\r\nnext', HashtagType.Unwrapped, 'tail');
   });
 
   it('handles end of text', () => {
-    assertFirstTag('some text #final', 'unwrapped', 'final');
+    assertFirstTag('some text #final', HashtagType.Unwrapped, 'final');
     assertUnwrappedRegExp('some text #final', 'final');
-    assertFirstTag('intro #<end>', 'wrapped', 'end');
-    assertFirstTag('#foo\\', 'unwrapped', 'foo');
+    assertFirstTag('intro #<end>', HashtagType.Wrapped, 'end');
+    assertFirstTag('#foo\\', HashtagType.Unwrapped, 'foo');
     assertUnwrappedRegExp('#foo\\', 'foo\\');
   });
 
@@ -447,9 +456,9 @@ describe('Boundaries & EOI', () => {
   });
 
   it('handles punctuation at EOI', () => {
-    assertFirstTag('list: #item,', 'unwrapped', 'item');
+    assertFirstTag('list: #item,', HashtagType.Unwrapped, 'item');
     assertUnwrappedRegExp('list: #item.', 'item');
-    assertFirstTag('#tag:', 'unwrapped', 'tag');
+    assertFirstTag('#tag:', HashtagType.Unwrapped, 'tag');
   });
 });
 
@@ -467,7 +476,7 @@ describe('Edge Cases & Specific Behavior', () => {
   });
 
   it('validates strict empty text rejection', () => {
-    assertFirstTag('#\\\\', 'unwrapped', '\\');
+    assertFirstTag('#\\\\', HashtagType.Unwrapped, '\\');
     assertUnwrappedRegExp('#\\\\', '\\\\');
   });
 });

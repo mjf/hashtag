@@ -218,8 +218,8 @@ Returns the earliest hashtag (by position) in the input string.
 
 **Returns:**
 
-- `{ type: 'wrapped', text: string }` for wrapped hashtags
-- `{ type: 'unwrapped', text: string }` for unwrapped hashtags
+- `{ type: HashtagType.Wrapped, text: string }` for wrapped hashtags
+- `{ type: HashtagType.Unwrapped, text: string }` for unwrapped hashtags
 - `null` if no valid hashtag found
 
 The `text` field contains unescaped text.
@@ -228,10 +228,10 @@ The `text` field contains unescaped text.
 
 ```typescript
 findHashtag('Check out #version2.0 today!');
-// yields { type: 'unwrapped', text: 'version2.0' }
+// yields { type: HashtagType.Unwrapped, text: 'version2.0' }
 
 findHashtag('Use #<my tag> here');
-// yields { type: 'wrapped', text: 'my tag' }
+// yields { type: HashtagType.Wrapped, text: 'my tag' }
 
 findHashtag('No tags here');
 // yields null
@@ -354,7 +354,7 @@ Regex-compatible object exposing `exec()` for finding the first hashtag
 
 - `[0]`: Full match including delimiters
 - `[1]`: Raw (still-escaped) text
-- `[2]`: Tag type `'wrapped' | 'unwrapped'`
+- `[2]`: Tag type `HashtagType.Wrapped | HashtagType.Unwrapped`
 - `index`: Starting position
 
 **Example:**
@@ -364,12 +364,12 @@ const match = hashtagRegExp.exec('#<a> #b');
 // First call yields:
 // match[0] = '#<a>'
 // match[1] = 'a'
-// match[2] = 'wrapped'
+// match[2] = HashtagType.Wrapped
 
 // Second call (mock state persists):
 // match[0] = '#b'
 // match[1] = 'b'
-// match[2] = 'unwrapped'
+// match[2] = HashtagType.Unwrapped
 ```
 
 ## Usage Examples
