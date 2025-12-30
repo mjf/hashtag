@@ -1,122 +1,99 @@
-export type HashtagKind = 'wrapped' | 'unwrapped';
-
 export type WrappedHashtag = {
   start: number;
   end: number;
-  content: string;
+  text: string;
 };
 
-export type FirstHashtag =
+export type Hashtag =
   | { type: 'wrapped'; tag: string }
   | { type: 'unwrapped'; tag: string };
 
-const BACKSLASH = 0x5c;
-const HASH = 0x23;
-const LT = 0x3c;
-const GT = 0x3e;
-const SPACE = 0x20;
-const DEL = 0x7f;
-const C1_END = 0x9f;
-
-const PERIOD = 0x2e;
-const COMMA = 0x2c;
-const SEMICOLON = 0x3b;
-const COLON = 0x3a;
-const EXCLAMATION = 0x21;
-const QUESTION = 0x3f;
-
-function isStrongTerminator(cu: number): boolean {
-  return cu <= SPACE || (cu >= DEL && cu <= C1_END);
+function isStrongTerminator(code: number): boolean {
+  // 0x20 SP
+  // 0x7f DEL
+  // 0x9f APC (C1 end)
+  return code <= 0x20 || (code >= 0x7f && code <= 0x9f);
 }
 
-function isAngleBracket(cu: number): boolean {
-  return cu === LT || cu === GT;
-}
-
-function isPunctuation(cu: number): boolean {
+function isPunctuation(code: number): boolean {
+  // 0x2e Full Stop
+  // 0x2c Period
+  // 0x3b Semicolon
+  // 0x3a Colon
+  // 0x21 Exclamation Mark
+  // 0x3f Question Mark
   return (
-    cu === PERIOD ||
-    cu === COMMA ||
-    cu === SEMICOLON ||
-    cu === COLON ||
-    cu === EXCLAMATION ||
-    cu === QUESTION
+    code === 0x2e ||
+    code === 0x2c ||
+    code === 0x3b ||
+    code === 0x3a ||
+    code === 0x21 ||
+    code === 0x3f
   );
 }
 
 function isSurrogatePair(input: string, pos: number): boolean {
-  if (pos + 1 >= input.length) return false;
+  if (pos + 1 >= input.length) {
+    return false;
+  }
   const h = input.charCodeAt(pos);
-  const l = input.charCodeAt(pos + 1);
-  return h >= 0xd800 && h <= 0xdbff && l >= 0xdc00 && l <= 0xdfff;
+  // High Surrogate Block (0xd800-0xdbff)
+  if (h >= 0xd800 && h <= 0xdbff) {
+    const l = input.charCodeAt(pos + 1);
+    // Low Surrogate Block (0xdc00-0xdfff)
+    return l >= 0xdc00 && l <= 0xdfff;
+  }
+  return false;
 }
 
-function countPrecedingBackslashes(input: string, pos: number): number {
+function isCharEscaped(input: string, pos: number): boolean {
   let count = 0;
-  for (
-    let k = pos - 1;
-    k >= 0 && input.charCodeAt(k) === BACKSLASH;
-    k--
-  ) {
+  for (let k = pos - 1; k >= 0 && input[k] === '\\'; k--) {
     count++;
   }
-  return count;
+  return (count & 1) === 1;
 }
 
-function isEscaped(input: string, pos: number): boolean {
-  return (countPrecedingBackslashes(input, pos) & 1) === 1;
-}
-
-function nextUnescapedHash(input: string, from: number): number {
-  let pos = from;
-  while (true) {
-    const i = input.indexOf('#', pos);
-    if (i === -1) return -1;
-    if (!isEscaped(input, i)) return i;
-    pos = i + 1;
-  }
-}
-
-function parseWrappedAt(
+function extractWrappedTag(
   input: string,
   hashIndex: number,
-): { end: number; content: string } | null {
+): { end: number; text: string } | null {
   const n = input.length;
-  if (hashIndex + 1 >= n || input.charCodeAt(hashIndex + 1) !== LT) {
+  if (hashIndex + 1 >= n || input.charCodeAt(hashIndex + 1) !== 0x3c) {
+    // 0x3c Less-than Sign
     return null;
   }
-
-  const contentStart = hashIndex + 2;
-  let pos = contentStart;
-
+  const startIndex = hashIndex + 2;
+  let pos = startIndex;
   while (pos < n) {
-    const gtIndex = input.indexOf('>', pos);
-    if (gtIndex === -1) return null;
-
-    if (!isEscaped(input, gtIndex)) {
-      if (gtIndex === contentStart) return null;
+    const closeBracketIndex = input.indexOf('>', pos);
+    if (closeBracketIndex === -1) {
+      return null;
+    }
+    if (!isCharEscaped(input, closeBracketIndex)) {
+      if (closeBracketIndex === startIndex) {
+        return null;
+      }
       return {
-        end: gtIndex + 1,
-        content: input.slice(contentStart, gtIndex),
+        end: closeBracketIndex + 1,
+        text: input.slice(startIndex, closeBracketIndex),
       };
     }
-    pos = gtIndex + 1;
+    pos = closeBracketIndex + 1;
   }
-
   return null;
 }
 
-function parseUnwrappedFrom(
+function extractUnwrappedTag(
   input: string,
   start: number,
-): { end: number; content: string } | null {
+): { end: number; text: string } | null {
   const n = input.length;
   let pos = start;
-
   while (pos < n) {
-    const cu = input.charCodeAt(pos);
-
-    if (cu === BACKSLASH) {
+    const code = input.charCodeAt(pos);
+    if (code === 0x5c) {
+      // 0x5c Backslash
       if (pos + 1 < n) {
         pos += isSurrogatePair(input, pos + 1) ? 3 : 2;
         continue;
@@ -124,13 +101,14 @@ function parseUnwrappedFrom(
       pos += 1;
       break;
     }
-
-    if (isStrongTerminator(cu) || cu === HASH) {
+    if (isStrongTerminator(code) || code === 0x23) {
+      // 0x23 Hash
       break;
     }
-
-    if (isPunctuation(cu)) {
-      if (pos + 1 >= n) break;
+    if (isPunctuation(code)) {
+      if (pos + 1 >= n) {
+        break;
+      }
       const next = input.charCodeAt(pos + 1);
       if (isStrongTerminator(next) || isPunctuation(next)) {
         break;
@@ -138,203 +116,255 @@ function parseUnwrappedFrom(
       pos += 1;
       continue;
     }
-
     pos += isSurrogatePair(input, pos) ? 2 : 1;
   }
-
   return pos > start
-    ? { end: pos, content: input.slice(start, pos) }
+    ? { end: pos, text: input.slice(start, pos) }
     : null;
 }
 
-export function findHashtagWrappedTags(
-  input: string,
-): WrappedHashtag[] {
+interface ScanResult {
+  type: 'wrapped' | 'unwrapped';
+  start: number;
+  end: number;
+  rawText: string;
+}
+
+function* scanAllHashtags(input: string): Generator<ScanResult> {
+  const n = input.length;
+  let i = 0;
+  // 0 = even number of backslashes
+  // 1 = odd (escaped)
+  let slashParity = 0;
+  while (i < n) {
+    const code = input.charCodeAt(i);
+    if (code === 0x5c) {
+      // 0x5c Backslash
+      slashParity ^= 1;
+      i += 1;
+      continue;
+    }
+    if (code === 0x23) {
+      // 0x23 Hash
+      if (slashParity === 0) {
+        const hashIndex = i;
+        if (
+          i + 1 < n &&
+          input.charCodeAt(i + 1) === 0x3c &&
+          // 0x3c Less-than Sign
+          !isCharEscaped(input, i + 1)
+        ) {
+          const parsed = extractWrappedTag(input, hashIndex);
+          if (parsed) {
+            yield {
+              type: 'wrapped',
+              start: hashIndex,
+              end: parsed.end,
+              rawText: parsed.text,
+            };
+            i = parsed.end;
+            slashParity = 0;
+            continue;
+          }
+          i = hashIndex + 2;
+          slashParity = 0;
+          continue;
+        }
+        const parsed = extractUnwrappedTag(input, hashIndex + 1);
+        if (parsed) {
+          const unescaped = unescapeHashtagText(parsed.text);
+          if (unescaped.length > 0) {
+            yield {
+              type: 'unwrapped',
+              start: hashIndex,
+              end: parsed.end,
+              rawText: parsed.text,
+            };
+            i = parsed.end;
+            slashParity = 0;
+            continue;
+          }
+        }
+      }
+      i += 1;
+      slashParity = 0;
+      continue;
+    }
+    slashParity = 0;
+    i += isSurrogatePair(input, i) ? 2 : 1;
+  }
+}
+
+export function findWrappedHashtags(input: string): WrappedHashtag[] {
   const result: WrappedHashtag[] = [];
-  let pos = 0;
-
-  while (pos < input.length) {
-    const hashIndex = nextUnescapedHash(input, pos);
-    if (hashIndex === -1) break;
-
-    const parsed = parseWrappedAt(input, hashIndex);
-    if (parsed) {
+  for (const item of scanAllHashtags(input)) {
+    if (item.type === 'wrapped') {
       result.push({
-        start: hashIndex,
-        end: parsed.end,
-        content: parsed.content,
+        start: item.start,
+        end: item.end,
+        text: item.rawText,
       });
-      pos = parsed.end;
-    } else {
-      pos = hashIndex + 1;
     }
   }
-
   return result;
 }
 
-function findFirstUnwrapped(
-  input: string,
-): { index: number; content: string } | null {
-  let pos = 0;
-
-  while (pos < input.length) {
-    const hashIndex = nextUnescapedHash(input, pos);
-    if (hashIndex === -1) return null;
-
-    if (
-      hashIndex + 1 < input.length &&
-      input.charCodeAt(hashIndex + 1) === LT
-    ) {
-      pos = hashIndex + 2;
-      continue;
-    }
-
-    const parsed = parseUnwrappedFrom(input, hashIndex + 1);
-    if (parsed) {
-      const unescaped = unescapeHashtagContent(parsed.content);
-      if (unescaped.length === 0) return null;
-
-      return { index: hashIndex, content: parsed.content };
-    }
-    pos = hashIndex + 1;
-  }
-
-  return null;
-}
-
-export function unescapeHashtagContent(content: string): string {
+export function unescapeHashtagText(text: string): string {
   let result = '';
   let i = 0;
-
-  while (i < content.length) {
-    if (content[i] === '\\') {
-      if (i + 1 < content.length) {
-        result += content[i + 1];
+  while (i < text.length) {
+    if (text[i] === '\\') {
+      if (i + 1 < text.length) {
+        result += text[i + 1];
         i += 2;
       } else {
         i += 1;
       }
     } else {
-      result += content[i];
+      result += text[i];
       i += 1;
     }
   }
-
   return result;
 }
 
-export function findFirstHashtag(input: string): FirstHashtag | null {
-  let pos = 0;
-
-  while (pos < input.length) {
-    const hashIndex = nextUnescapedHash(input, pos);
-    if (hashIndex === -1) return null;
-
-    if (
-      hashIndex + 1 < input.length &&
-      input.charCodeAt(hashIndex + 1) === LT
-    ) {
-      const parsed = parseWrappedAt(input, hashIndex);
-      if (parsed) {
-        return {
-          type: 'wrapped',
-          tag: unescapeHashtagContent(parsed.content),
-        };
-      }
-      pos = hashIndex + 2;
-    } else {
-      const parsed = parseUnwrappedFrom(input, hashIndex + 1);
-      if (parsed) {
-        const unescapedTag = unescapeHashtagContent(parsed.content);
-        if (unescapedTag.length === 0) return null;
-
-        return {
-          type: 'unwrapped',
-          tag: unescapedTag,
-        };
-      }
-      pos = hashIndex + 1;
-    }
+export function findHashtag(input: string): Hashtag | null {
+  for (const item of scanAllHashtags(input)) {
+    return {
+      type: item.type,
+      tag: unescapeHashtagText(item.rawText),
+    };
   }
-
   return null;
 }
 
-function canBeUnwrapped(content: string): boolean {
+function canBeUnwrapped(text: string): boolean {
   for (
     let i = 0;
-    i < content.length;
-    i += isSurrogatePair(content, i) ? 2 : 1
+    i < text.length;
+    i += isSurrogatePair(text, i) ? 2 : 1
   ) {
-    const cu = content.charCodeAt(i);
-    if (isStrongTerminator(cu)) {
+    const code = text.charCodeAt(i);
+    if (isStrongTerminator(code)) {
       return false;
     }
   }
   return true;
 }
 
-function escapeForUnwrapped(content: string): string {
+function escapeAsUnwrapped(text: string): string {
   let result = '';
-
-  for (let i = 0; i < content.length; ) {
-    const ch = content[i];
+  for (let i = 0; i < text.length; ) {
+    const ch = text[i];
     if (i === 0 && ch === '<') {
       result += '\\' + ch;
       i += 1;
     } else if (ch === '\\' || ch === '#') {
       result += '\\' + ch;
       i += 1;
-    } else if (isSurrogatePair(content, i)) {
-      result += content.slice(i, i + 2);
+    } else if (isSurrogatePair(text, i)) {
+      result += text.slice(i, i + 2);
       i += 2;
     } else {
       result += ch;
       i += 1;
     }
   }
-
   return result;
 }
 
-function escapeForWrapped(content: string): string {
+function escapeAsWrapped(text: string): string {
   let result = '';
-
-  for (let i = 0; i < content.length; ) {
-    const ch = content[i];
+  for (let i = 0; i < text.length; ) {
+    const ch = text[i];
     if (ch === '\\' || ch === '>' || ch === '<') {
       result += '\\' + ch;
       i += 1;
-    } else if (isSurrogatePair(content, i)) {
-      result += content.slice(i, i + 2);
+    } else if (isSurrogatePair(text, i)) {
+      result += text.slice(i, i + 2);
       i += 2;
     } else {
       result += ch;
       i += 1;
     }
   }
-
   return result;
 }
 
-export function hashtagForContent(content: string): string {
-  if (canBeUnwrapped(content)) {
-    return '#' + escapeForUnwrapped(content);
+export function createHashtag(text: string): string {
+  if (canBeUnwrapped(text)) {
+    return '#' + escapeAsUnwrapped(text);
   } else {
-    return '#<' + escapeForWrapped(content) + '>';
+    return '#<' + escapeAsWrapped(text) + '>';
   }
 }
 
 type ExecResult = Array<string> & { index?: number };
 
-export const unwrappedTagRegex = {
-  exec(input: string): ExecResult | null {
-    const match = findFirstUnwrapped(input);
-    if (!match) return null;
+function createHashtagRegExpMock(
+  filterType?: 'wrapped' | 'unwrapped',
+): {
+  lastIndex: number;
+  exec: (input: string) => ExecResult | null;
+  reset: () => void;
+} {
+  const state = {
+    lastIndex: 0,
+    _iterator: null as Iterator<ScanResult> | null,
+    _currentInput: null as string | null,
+  };
 
-    const result: ExecResult = ['#' + match.content, match.content];
-    result.index = match.index;
-    return result;
-  },
-};
+  return {
+    get lastIndex(): number {
+      return state.lastIndex;
+    },
+    set lastIndex(value: number) {
+      state.lastIndex = value;
+    },
+    exec(input: string): ExecResult | null {
+      if (input !== state._currentInput) {
+        state._currentInput = input;
+        state.lastIndex = 0;
+        state._iterator = null;
+      }
+      if (!state._iterator) {
+        state._iterator = scanAllHashtags(input);
+      }
+      while (true) {
+        const result = state._iterator!.next();
+        if (result.done) {
+          state._iterator = null;
+          state._currentInput = null;
+          state.lastIndex = 0;
+          return null;
+        }
+        const item = result.value;
+        state.lastIndex = item.end;
+        if (filterType && item.type !== filterType) {
+          continue;
+        }
+        const fullMatch =
+          item.type === 'wrapped'
+            ? `#<${item.rawText}>`
+            : `#${item.rawText}`;
+
+        const execResult: ExecResult = [fullMatch, item.rawText];
+        if (!filterType) {
+          execResult.push(item.type);
+        }
+        execResult.index = item.start;
+        return execResult;
+      }
+    },
+    reset(): void {
+      state.lastIndex = 0;
+      state._iterator = null;
+      state._currentInput = null;
+    },
+  };
+}
+
+export const unwrappedHashtagRegExp =
+  createHashtagRegExpMock('unwrapped');
+export const wrappedHashtagRegExp = createHashtagRegExpMock('wrapped');
+export const hashtagRegExp = createHashtagRegExpMock();

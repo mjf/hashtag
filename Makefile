@@ -1,8 +1,11 @@
-all: fmt check test
+all: format lint check test
 
-fmt:
+format:
 	prettier --write *.md
 	prettier --write *.ts
+
+lint:
+	deno lint
 
 check:
 	deno check

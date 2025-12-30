@@ -6,22 +6,22 @@ backslash escaping.
 
 ## Syntax Overview
 
-This parser recognizes two hashtag forms: **wrapped** (`#<content>`) and
-**unwrapped** (`#content`). Both forms support backslash escaping for
-precise control over content boundaries.
+This parser recognizes two hashtag forms: **wrapped** (`#<text>`) and
+**unwrapped** (`#text`). Both forms support backslash escaping for
+precise control over text boundaries.
 
-### Wrapped Form: `#<content>`
+### Wrapped Form: `#<text>`
 
-Wrapped hashtags use angle bracket delimiters for content that contains
+Wrapped hashtags use angle bracket delimiters for text that contains
 whitespace, control characters, or angle brackets.
 
 **ABNF Grammar:**
 
 ```abnf
-wrapped-hashtag = unescaped-hash "<" wrapped-content ">"
+wrapped-hashtag = unescaped-hash "<" wrapped-text ">"
 unescaped-hash  = "#"
                 ; preceded by even number of backslashes (including zero)
-wrapped-content = 1*wrapped-char
+wrapped-text = 1*wrapped-char
 wrapped-char    = escape-pair / regular-char
 escape-pair     = "\" ANY
 regular-char    = %x00-3D / %x3F-5B / %x5D-10FFFF
@@ -33,7 +33,7 @@ ANY             = %x00-10FFFF
 
 - Backslash (`\`) followed by any character forms an escape pair
 - The backslash is consumed; the following character appears literally
-  in unescaped content
+  in unescaped text
 - Must escape: `\` as `\\`, `<` as `\<`, and `>` as `\>`
 
 **Examples:**
@@ -54,19 +54,19 @@ With surrounding text:
 | `The #<a\>b> format.`    | `a>b`      |
 | `See #<<special>> data.` | `<special` |
 
-### Unwrapped Form: `#content`
+### Unwrapped Form: `#text`
 
 Unwrapped hashtags provide a compact syntax for identifiers, avoiding
-delimiters when content contains no problematic characters.
+delimiters when text contains no problematic characters.
 
 **ABNF Grammar:**
 
 ```abnf
-unwrapped-hashtag  = unescaped-hash unwrapped-content
+unwrapped-hashtag  = unescaped-hash unwrapped-text
 unescaped-hash     = "#"
-                   ; where preceded by even number of backslashes
-                   ; and not followed by "<"
-unwrapped-content  = 1*unwrapped-char
+                   ; preceded by even number of backslashes
+                   ; and NOT followed by an unescaped "<"
+unwrapped-text  = 1*unwrapped-char
 unwrapped-char     = escape-pair / punct-continuation / regular-char
 escape-pair        = "\" ANY
                    ; always continues, never terminates
@@ -88,19 +88,19 @@ non-terminator     = regular-char
 
 Content extends maximally until encountering:
 
-1. **Strong terminators** (immediate, unconditional):
-   - Whitespace and control characters (code points `0x00`-`0x20`:
-     SPACE, TAB, CR, LF, all C0 controls)
-   - Extended control characters (`0x7F`–`0x9F`: DEL and C1 controls)
-   - Hash character (`#`)
-   - _(Note: Angle brackets `<` and `>` are valid content characters in
-     the unwrapped form and do not terminate the tag. They only trigger
-     the wrapped form if they immediately follow the `#`.)_
+1.  **Strong terminators** (immediate, unconditional):
+    - Whitespace and control characters (code points `0x00`-`0x20`:
+      SPACE, TAB, CR, LF, all C0 controls)
+    - Extended control characters (`0x7F`–`0x9F`: DEL and C1 controls)
+    - Hash character (`#`)
+    - _(Note: Angle brackets `<` and `>` are valid text characters in
+      the unwrapped form. An escaped `<` (`\<`) prevents the parser from
+      interpreting the sequence as a wrapped tag trigger.)_
 
-2. **Punctuation** (`.`, `,`, `;`, `:`, `!`, `?`) with lookahead:
-   - Terminates if followed by: strong terminator, another punctuation,
-     or end-of-input (EOI)
-   - Continues if followed by other characters (regular characters)
+2.  **Punctuation** (`.`, `,`, `;`, `:`, `!`, `?`) with lookahead:
+    - Terminates if followed by: strong terminator, another punctuation,
+      or end-of-input (EOI)
+    - Continues if followed by other characters (regular characters)
 
 This lookahead design mirrors natural language: sentence-ending
 punctuation appears before whitespace or EOI, while mid-identifier
@@ -197,7 +197,7 @@ transformations (reflowing, concatenation, insertion, extraction).
 **Leftmost Matching:** When multiple potential hashtags exist, the
 parser selects the one beginning at the earliest position. At each
 unescaped hash, wrapped form takes precedence if the hash is followed by
-`<`.
+an unescaped `<`.
 
 **Escape State:** A hash character at position `i` is unescaped when
 preceded by an even number of backslashes (including zero). Escape state
@@ -208,12 +208,12 @@ treating surrogate pairs atomically. A high surrogate (U+D800–U+DBFF)
 followed by a low surrogate (U+DC00–U+DFFF) represents a single code
 point and is processed as an indivisible unit.
 
-**Empty Content:** Both forms reject empty content. `#<>` and a lone `#`
+**Empty Content:** Both forms reject empty text. `#<>` and a lone `#`
 are invalid.
 
 ## API
 
-### `findFirstHashtag(input: string): FirstHashtag | null`
+### `findHashtag(input: string): Hashtag | null`
 
 Returns the earliest hashtag (by position) in the input string.
 
@@ -223,22 +223,22 @@ Returns the earliest hashtag (by position) in the input string.
 - `{ type: 'unwrapped', tag: string }` for unwrapped hashtags
 - `null` if no valid hashtag found
 
-The `tag` field contains unescaped content.
+The `tag` field contains unescaped text.
 
 **Example:**
 
 ```typescript
-findFirstHashtag('Check out #version2.0 today!');
+findHashtag('Check out #version2.0 today!');
 // yields { type: 'unwrapped', tag: 'version2.0' }
 
-findFirstHashtag('Use #<my tag> here');
+findHashtag('Use #<my tag> here');
 // yields { type: 'wrapped', tag: 'my tag' }
 
-findFirstHashtag('No tags here');
+findHashtag('No tags here');
 // yields null
 ```
 
-### `findHashtagWrappedTags(input: string): WrappedHashtag[]`
+### `findWrappedHashtags(input: string): WrappedHashtag[]`
 
 Finds all wrapped `#<...>` tags in the input string.
 
@@ -246,22 +246,22 @@ Finds all wrapped `#<...>` tags in the input string.
 
 - `start`: Starting index (at the `#`)
 - `end`: Ending index (after the `>`)
-- `content`: Raw (still-escaped) content
+- `text`: Raw (still-escaped) text
 
 **Example:**
 
 ```typescript
-findHashtagWrappedTags('See #<tag1> and #<tag2>');
+findWrappedHashtags('See #<tag1> and #<tag2>');
 // yields [
-//   { start:  4, end: 11, content: 'tag1' },
-//   { start: 16, end: 23, content: 'tag2' }
+//   { start:  4, end: 11, text: 'tag1' },
+//   { start: 16, end: 23, text: 'tag2' }
 // ]
 ```
 
-### `unescapeHashtagContent(content: string): string`
+### `unescapeHashtagContent(text: string): string`
 
-Removes escape sequences from hashtag content by processing each `\X`
-pair as the literal character `X`.
+Removes escape sequences from hashtag text by processing each `\X` pair
+as the literal character `X`.
 
 **Algorithm:**
 
@@ -278,35 +278,35 @@ unescapeHashtagContent('foo\\\\bar'); // yields `foo\bar`
 unescapeHashtagContent('foo\\');      // yields `foo`
 ```
 
-### `hashtagForContent(content: string): string`
+### `createHashtag(text: string): string`
 
-Synthesizes the correct hashtag syntax for given unescaped content.
+Synthesizes the correct hashtag syntax for given unescaped text.
 
 **Algorithm:**
 
-1. If content contains no whitespace or control characters:
-   - Use unwrapped syntax `#content`
+1. If text contains no whitespace or control characters:
+   - Use unwrapped syntax `#text`
    - Escape `\` as `\\` and `#` as `\#`
-   - **Edge Case:** If the content starts with `<`, escape it as `\<` to
+   - **Edge Case:** If the text starts with `<`, escape it as `\<` to
      prevent the parser from interpreting it as a wrapped tag.
 2. Otherwise:
-   - Use wrapped syntax `#<content>`
+   - Use wrapped syntax `#<text>`
    - Escape `\` as `\\`, `<` as `\<`, and `>` as `\>`
 
 **Example:**
 
 ```typescript
-hashtagForContent('simple');  // yields `#simple`
-hashtagForContent('foo#bar'); // yields `#foo\\#bar`
-hashtagForContent('my tag');  // yields `#<my tag>`
-hashtagForContent('a<b>c');   // yields `#a<b>c`
-hashtagForContent('<start');  // yields `#\<start>`
+createHashtag('simple');  // yields `#simple`
+createHashtag('foo#bar'); // yields `#foo\\#bar`
+createHashtag('my tag');  // yields `#<my tag>`
+createHashtag('a<b>c');   // yields `#a<b>c`
+createHashtag('<start');  // yields `#\<start>`
 ```
 
-**Roundtrip Property:** For any content `c`:
-`parse(hashtagForContent(c))` recovers `c`.
+**Roundtrip Property:** For any text `c`: `parse(createHashtag(c))`
+recovers `c`.
 
-### `unwrappedTagRegex`
+### `unwrappedHashtagRegExp`
 
 Regex-compatible object exposing `exec()` for finding the first
 unwrapped hashtag.
@@ -314,40 +314,87 @@ unwrapped hashtag.
 **Returns:** Match array with:
 
 - `[0]`: Full match including `#`
-- `[1]`: Raw (still-escaped) content
+- `[1]`: Raw (still-escaped) text
 - `index`: Starting position
 
 **Example:**
 
 ```typescript
-const match = unwrappedTagRegex.exec('text #foo bar');
+const match = unwrappedHashtagRegExp.exec('text #foo bar');
 // match[0] yields `#foo`
 // match[1] yields `foo`
 // match.index yields 5
 ```
 
+### `wrappedHashtagRegExp`
+
+Regex-compatible object exposing `exec()` for finding the first wrapped
+hashtag.
+
+**Returns:** Match array with:
+
+- `[0]`: Full match including `#` and `<>`
+- `[1]`: Raw (still-escaped) text
+- `index`: Starting position
+
+**Example:**
+
+```typescript
+const match = wrappedHashtagRegExp.exec('text #<foo> bar');
+// match[0] yields `#<foo>`
+// match[1] yields `foo`
+// match.index yields 5
+```
+
+### `hashtagRegExp`
+
+Regex-compatible object exposing `exec()` for finding the first hashtag
+(wrapped or unwrapped).
+
+**Returns:** Match array with:
+
+- `[0]`: Full match including delimiters
+- `[1]`: Raw (still-escaped) text
+- `[2]`: Tag type `'wrapped' | 'unwrapped'`
+- `index`: Starting position
+
+**Example:**
+
+```typescript
+const match = hashtagRegExp.exec('#<a> #b');
+// First call yields:
+// match[0] = '#<a>'
+// match[1] = 'a'
+// match[2] = 'wrapped'
+
+// Second call (mock state persists):
+// match[0] = '#b'
+// match[1] = 'b'
+// match[2] = 'unwrapped'
+```
+
 ## Usage Examples
 
 ```typescript
-import { findFirstHashtag, hashtagForContent } from './hashtag.ts';
+import { findHashtag, createHashtag } from './hashtag.ts';
 
 // Find hashtags in text
-const result = findFirstHashtag('Check out #version2.0 today!');
+const result = findHashtag('Check out #version2.0 today!');
 console.log(result?.tag); // `version2.0`
 
 // Handle punctuation
-const emphatic = findFirstHashtag('This is #awesome! Right?');
+const emphatic = findHashtag('This is #awesome! Right?');
 console.log(emphatic?.tag); // `awesome`
 
 // Escape for synthesis
-const tag = hashtagForContent('foo.bar');
+const tag = createHashtag('foo.bar');
 console.log(tag); // `#foo.bar`
 
-const tagWithSpace = hashtagForContent('my tag');
+const tagWithSpace = createHashtag('my tag');
 console.log(tagWithSpace); // `#<my tag>`
 
 // Escaped characters
-const escaped = findFirstHashtag('#foo\\#bar');
+const escaped = findHashtag('#foo\\#bar');
 console.log(escaped?.tag); // `foo#bar`
 ```
 

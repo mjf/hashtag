@@ -1,24 +1,27 @@
 import {
-  findFirstHashtag,
-  findHashtagWrappedTags,
-  hashtagForContent,
-  unescapeHashtagContent,
-  unwrappedTagRegex,
+  findHashtag,
+  findWrappedHashtags,
+  createHashtag,
+  unescapeHashtagText,
+  wrappedHashtagRegExp,
+  unwrappedHashtagRegExp,
+  hashtagRegExp,
 } from './hashtag.ts';
 
-import { describe, it } from 'https://deno.land/std/testing/bdd.ts';
-import { expect } from 'https://deno.land/std/expect/mod.ts';
+import { describe, it } from '@std/testing/bdd';
+import { expect } from '@std/expect';
 
-function testWrapped(input: string, expected: string[]) {
-  const tags = findHashtagWrappedTags(input).map((t) => t.content);
+function assertWrappedTags(input: string, expected: string[]) {
+  const tags = findWrappedHashtags(input).map((t) => t.text);
   expect(tags).toEqual(expected);
 }
-function testFirst(
+
+function assertFirstTag(
   input: string,
   type: 'wrapped' | 'unwrapped' | null,
   tag?: string,
 ) {
-  const res = findFirstHashtag(input);
+  const res = findHashtag(input);
   if (type === null) {
     expect(res).toBeNull();
   } else {
@@ -27,8 +30,9 @@ function testFirst(
     expect(res!.tag).toBe(tag);
   }
 }
-function testUnwrappedRegex(input: string, expected: string | null) {
-  const m = unwrappedTagRegex.exec(input);
+
+function assertUnwrappedRegExp(input: string, expected: string | null) {
+  const m = unwrappedHashtagRegExp.exec(input);
   if (expected === null) {
     expect(m).toBeNull();
   } else {
@@ -36,397 +40,434 @@ function testUnwrappedRegex(input: string, expected: string | null) {
     expect(m![1]).toBe(expected);
   }
 }
-function testUnescapeWrapped(input: string, expected: string) {
-  expect(unescapeHashtagContent(input)).toBe(expected);
-}
-function testUnescapeUnwrapped(input: string, expected: string) {
-  expect(unescapeHashtagContent(input)).toBe(expected);
-}
-function testSynth(content: string, expected: string) {
-  expect(hashtagForContent(content)).toBe(expected);
+
+function assertSynthesis(text: string, expected: string) {
+  expect(createHashtag(text)).toBe(expected);
 }
 
-describe('Wrapped hashtag parsing', () => {
-  it('basic wrapped', () => {
-    testWrapped('#<foo>', ['foo']);
-    testWrapped('hello #<foo> world', ['foo']);
-    testWrapped('#<foo> #<bar>', ['foo', 'bar']);
+describe('Text Unescaping', () => {
+  it('unescapes wrapped text', () => {
+    expect(unescapeHashtagText('foo')).toBe('foo');
+    expect(unescapeHashtagText('foo\\<bar\\>')).toBe('foo<bar>');
+    expect(unescapeHashtagText('foo\\\\bar')).toBe('foo\\bar');
+    expect(unescapeHashtagText('f\\<o\\>o')).toBe('f<o>o');
+    expect(unescapeHashtagText('a\\<b\\>c')).toBe('a<b>c');
+    expect(unescapeHashtagText('foo\\x')).toBe('foox');
   });
 
-  it('escaped >', () => {
-    testWrapped('#<foo\\>>', ['foo\\>']);
-    testWrapped('#<foo\\\\>>', ['foo\\\\']);
-    testWrapped('#<foo\\\\\\>>', ['foo\\\\\\>']);
-    testWrapped('#<foo\\\\\\\\>>', ['foo\\\\\\\\']);
-    testWrapped('#<foo\\>bar>', ['foo\\>bar']);
-  });
-
-  it('escaped leading #', () => {
-    testWrapped('\\#<foo>', []);
-    testWrapped('abc\\#<bar>', []);
-  });
-
-  it('empty tag', () => {
-    testWrapped('#<>', []);
-    testWrapped('#<\\>>', ['\\>']);
-    testWrapped('#<\\<\\>>', ['\\<\\>']);
-  });
-
-  it('nested < or > inside', () => {
-    testWrapped('#<foo<bar>>', ['foo<bar']);
-    testWrapped('#<foo\\<bar>>', ['foo\\<bar']);
-  });
-
-  it('multiple tags in string', () => {
-    testWrapped('A#<one>B#<two>C', ['one', 'two']);
-    testWrapped('#<a>#<b>#<c>', ['a', 'b', 'c']);
-  });
-
-  it('escaped < in content', () => {
-    testWrapped('#<foo\\<bar>', ['foo\\<bar']);
-  });
-
-  it('no closing >', () => {
-    testWrapped('#<foo', []);
-    testWrapped('#<foo\\>', []);
-  });
-
-  it('escapes in content', () => {
-    testWrapped('#<foo\\\\bar>', ['foo\\\\bar']);
-    testWrapped('#<foo\\<bar\\>>', ['foo\\<bar\\>']);
+  it('unescapes unwrapped text', () => {
+    expect(unescapeHashtagText('foo')).toBe('foo');
+    expect(unescapeHashtagText('foo\\#bar')).toBe('foo#bar');
+    expect(unescapeHashtagText('foo\\\\bar')).toBe('foo\\bar');
+    expect(unescapeHashtagText('foo\\xbar')).toBe('fooxbar');
+    expect(unescapeHashtagText('\\#foo')).toBe('#foo');
   });
 });
 
-describe('First hashtag detection', () => {
-  it('wrapped first', () => {
-    testFirst('#<foo> #bar', 'wrapped', 'foo');
-    testFirst('abc #<xyz> #tag', 'wrapped', 'xyz');
+describe('Tag Synthesis', () => {
+  it('synthesizes unwrapped syntax', () => {
+    assertSynthesis('foo', '#foo');
+    assertSynthesis('bar123', '#bar123');
+    assertSynthesis('testTag', '#testTag');
+    assertSynthesis('foo\\bar', '#foo\\\\bar');
+    assertSynthesis('foo#bar', '#foo\\#bar');
+    assertSynthesis('#foo', '#\\#foo');
+    assertSynthesis('\\foo', '#\\\\foo');
   });
 
-  it('unwrapped first', () => {
-    testFirst('#foo', 'unwrapped', 'foo');
-    testFirst('text #tag', 'unwrapped', 'tag');
+  it('synthesizes wrapped syntax when forced', () => {
+    assertSynthesis('a b>c', '#<a b\\>c>');
+    assertSynthesis('foo bar', '#<foo bar>');
   });
 
-  it('none found', () => {
-    testFirst('no hashtag here', null);
-    testFirst('\\#foo', null);
-    testFirst('#<>', null);
+  it('handles angle brackets in synthesis', () => {
+    assertSynthesis('a<b>c', '#a<b>c');
+    assertSynthesis('a <b> c', '#<a \\<b\\> c>');
+    assertSynthesis('<>', '#\\<>');
+    assertSynthesis('<<', '#\\<<');
+    assertSynthesis('>>', '#>>');
+    assertSynthesis('<<<', '#\\<<<');
   });
 
-  it('prefer earliest by position', () => {
-    testFirst('#foo and #<bar>', 'unwrapped', 'foo');
-    testFirst('xxx #<bar> then #baz', 'wrapped', 'bar');
-  });
-});
-
-describe('Unwrapped hashtag regex (compat)', () => {
-  it('basic', () => {
-    testUnwrappedRegex('#foo', 'foo');
-    testUnwrappedRegex('#bar123', 'bar123');
-    testUnwrappedRegex('abc #baz', 'baz');
+  it('handles empty text', () => {
+    const str = createHashtag('');
+    const res = findHashtag(str);
+    expect(res).toBeNull();
   });
 
-  it('disallowed chars terminate', () => {
-    testUnwrappedRegex('#foo,bar', 'foo,bar');
-    testUnwrappedRegex('#foo.bar', 'foo.bar');
-    testUnwrappedRegex('#foo bar', 'foo');
-  });
-
-  it('escaped #', () => {
-    testUnwrappedRegex('\\#foo', null);
-  });
-
-  it('hash terminates', () => {
-    testUnwrappedRegex('#foo#bar', 'foo');
-  });
-
-  it('control chars terminate', () => {
-    testUnwrappedRegex('#foo\nbar', 'foo');
+  it('roundtrips tag starting with escaped <', () => {
+    const text = '<start';
+    const str = createHashtag(text);
+    const res = findHashtag(str);
+    expect(res).not.toBeNull();
+    expect(res?.tag).toBe(text);
   });
 });
 
-describe('Unescape (wrapped)', () => {
-  it('simple and special', () => {
-    testUnescapeWrapped('foo', 'foo');
-    testUnescapeWrapped('foo\\<bar\\>', 'foo<bar>');
-    testUnescapeWrapped('foo\\\\bar', 'foo\\bar');
-    testUnescapeWrapped('f\\<o\\>o', 'f<o>o');
-    testUnescapeWrapped('a\\<b\\>c', 'a<b>c');
-    testUnescapeWrapped('foo\\x', 'foox');
+describe('Wrapped Tags', () => {
+  it('parses basic wrapped tags', () => {
+    assertWrappedTags('#<foo>', ['foo']);
+    assertWrappedTags('hello #<foo> world', ['foo']);
+    assertWrappedTags('#<foo> #<bar>', ['foo', 'bar']);
+  });
+
+  it('handles escaped closing bracket', () => {
+    assertWrappedTags('#<foo\\>>', ['foo\\>']);
+    assertWrappedTags('#<foo\\\\>>', ['foo\\\\']);
+    assertWrappedTags('#<foo\\\\\\>>', ['foo\\\\\\>']);
+    assertWrappedTags('#<foo\\\\\\\\>>', ['foo\\\\\\\\']);
+    assertWrappedTags('#<foo\\>bar>', ['foo\\>bar']);
+  });
+
+  it('ignores escaped leading hash', () => {
+    assertWrappedTags('\\#<foo>', []);
+    assertWrappedTags('abc\\#<bar>', []);
+  });
+
+  it('rejects empty wrapped tags', () => {
+    assertWrappedTags('#<>', []);
+    assertWrappedTags('#<\\>>', ['\\>']);
+    assertWrappedTags('#<\\<\\>>', ['\\<\\>']);
+  });
+
+  it('allows nested brackets', () => {
+    assertWrappedTags('#<foo<bar>>', ['foo<bar']);
+    assertWrappedTags('#<foo\\<bar>>', ['foo\\<bar']);
+    assertWrappedTags('#<x\\\\\\<y\\>>', ['x\\\\\\<y\\>']);
+  });
+
+  it('handles multiple tags', () => {
+    assertWrappedTags('A#<one>B#<two>C', ['one', 'two']);
+    assertWrappedTags('#<a>#<b>#<c>', ['a', 'b', 'c']);
+  });
+
+  it('rejects incomplete wrapped tags', () => {
+    assertWrappedTags('#<foo', []);
+    assertWrappedTags('#<foo\\>', []);
+    assertWrappedTags('#<', []);
   });
 });
 
-describe('Unescape (unwrapped)', () => {
-  it('simple and escapes', () => {
-    testUnescapeUnwrapped('foo', 'foo');
-    testUnescapeUnwrapped('foo\\#bar', 'foo#bar');
-    testUnescapeUnwrapped('foo\\\\bar', 'foo\\bar');
-    testUnescapeUnwrapped('foo\\xbar', 'fooxbar');
-    testUnescapeUnwrapped('\\#foo', '#foo');
+describe('Unwrapped Tags', () => {
+  it('parses basic unwrapped tags', () => {
+    assertUnwrappedRegExp('#foo', 'foo');
+    assertUnwrappedRegExp('#bar123', 'bar123');
+    assertUnwrappedRegExp('abc #baz', 'baz');
+  });
+
+  it('terminates on strong terminators', () => {
+    assertUnwrappedRegExp('#foo bar', 'foo');
+    assertUnwrappedRegExp('#foo\nbar', 'foo');
+    assertUnwrappedRegExp('#foo#bar', 'foo');
+  });
+
+  it('terminates on disallowed characters', () => {
+    assertUnwrappedRegExp('\\#foo', null);
+  });
+
+  it('handles punctuation lookahead', () => {
+    assertUnwrappedRegExp('#foo,bar', 'foo,bar');
+    assertUnwrappedRegExp('#foo.bar', 'foo.bar');
+    assertUnwrappedRegExp('#foo!a', 'foo!a');
+    assertUnwrappedRegExp('#foo!!', 'foo');
+    assertUnwrappedRegExp('#foo..', 'foo');
+    assertUnwrappedRegExp('#tag:', 'tag');
+    assertUnwrappedRegExp('#tag:a', 'tag:a');
+  });
+
+  it('allows extended characters', () => {
+    assertUnwrappedRegExp('#foo/bar', 'foo/bar');
+    assertUnwrappedRegExp('#a-b_c', 'a-b_c');
+    assertUnwrappedRegExp('#123abc', '123abc');
+    assertUnwrappedRegExp('#😀x', '😀x');
+  });
+
+  it('allows angle brackets', () => {
+    assertUnwrappedRegExp('#foo<bar', 'foo<bar');
+    assertUnwrappedRegExp('#tag>a<b', 'tag>a<b');
+    assertUnwrappedRegExp('#a!<b', 'a!<b');
+    assertUnwrappedRegExp('#tag<', 'tag<');
   });
 });
 
-describe('Hashtag synthesis (hashtagForContent)', () => {
-  it('unwrapped ok (escaping where needed)', () => {
-    testSynth('foo', '#foo');
-    testSynth('bar123', '#bar123');
-    testSynth('testTag', '#testTag');
-    testSynth('foo\\bar', '#foo\\\\bar');
-    testSynth('foo#bar', '#foo\\#bar');
-    testSynth('#foo', '#\\#foo');
-    testSynth('\\foo', '#\\\\foo');
+describe('RegExp Mock (State)', () => {
+  it('supports global iteration', () => {
+    const input = 'text #one #<wrapped> #two #<three> #four';
+    const regexp = unwrappedHashtagRegExp;
+
+    let m = regexp.exec(input);
+    expect(m![1]).toBe('one');
+
+    m = regexp.exec(input);
+    expect(m![1]).toBe('two');
+
+    m = regexp.exec(input);
+    expect(m![1]).toBe('four');
+
+    m = regexp.exec(input);
+    expect(m).toBeNull();
   });
 
-  it('wrapped forced for disallowed (spaces/controls)', () => {
-    testSynth('a b>c', '#<a b\\>c>');
-    testSynth('foo bar', '#<foo bar>');
-    testSynth('a<b>c', '#a<b>c');
+  it('resets on new input', () => {
+    const regexp = unwrappedHashtagRegExp;
+    regexp.exec('#first');
+    const m = regexp.exec('#second');
+    expect(m![1]).toBe('second');
   });
 });
 
-describe('Unicode and edge cases', () => {
-  it('unwrapped emoji allowed', () => {
-    testUnwrappedRegex('#😀', '😀');
-    testFirst('#😀 stuff', 'unwrapped', '😀');
-    testSynth('😀', '#😀');
+describe('Complex Regex Iteration', () => {
+  const input =
+    '\\# #<long name> #test\\#ing # #\\<magic> ## ' +
+    '#🚀.launch #\n #<skip> and #the\\ end.';
+
+  it('iterates unwrapped regex over complex input', () => {
+    const regex = unwrappedHashtagRegExp;
+    let m;
+
+    m = regex.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#test\\#ing');
+    expect(m![1]).toBe('test\\#ing');
+    expect(m!.index).toBe(16);
+
+    m = regex.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#\\<magic>');
+    expect(m![1]).toBe('\\<magic>');
+    expect(m!.index).toBe(29);
+
+    m = regex.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#🚀.launch');
+    expect(m![1]).toBe('🚀.launch');
+    expect(m!.index).toBe(42);
+
+    m = regex.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#the\\ end');
+    expect(m![1]).toBe('the\\ end');
+    expect(m!.index).toBe(68);
+
+    m = regex.exec(input);
+    expect(m).toBeNull();
   });
 
-  it('wrapped with emoji and escapes', () => {
-    testWrapped('#<a😀b>', ['a😀b']);
-    testWrapped('#<x\\>😀>', ['x\\>😀']);
+  it('iterates wrapped regex over complex input', () => {
+    const regex = wrappedHashtagRegExp;
+    let m;
+
+    m = regex.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#<long name>');
+    expect(m![1]).toBe('long name');
+    expect(m!.index).toBe(3);
+
+    m = regex.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#<skip>');
+    expect(m![1]).toBe('skip');
+    expect(m!.index).toBe(56);
+
+    m = regex.exec(input);
+    expect(m).toBeNull();
   });
 
-  it('unwrapped with escaped hash inside', () => {
-    const m = unwrappedTagRegex.exec('#foo\\#bar');
+  it('iterates combined (hashtag) regex over complex input', () => {
+    const regex = hashtagRegExp;
+    let m;
+
+    m = regex.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#<long name>');
+    expect(m![1]).toBe('long name');
+    expect(m![2]).toBe('wrapped');
+    expect(m!.index).toBe(3);
+
+    m = regex.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#test\\#ing');
+    expect(m![1]).toBe('test\\#ing');
+    expect(m![2]).toBe('unwrapped');
+    expect(m!.index).toBe(16);
+
+    m = regex.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#\\<magic>');
+    expect(m![1]).toBe('\\<magic>');
+    expect(m![2]).toBe('unwrapped');
+    expect(m!.index).toBe(29);
+
+    m = regex.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#🚀.launch');
+    expect(m![1]).toBe('🚀.launch');
+    expect(m![2]).toBe('unwrapped');
+    expect(m!.index).toBe(42);
+
+    m = regex.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#<skip>');
+    expect(m![1]).toBe('skip');
+    expect(m![2]).toBe('wrapped');
+    expect(m!.index).toBe(56);
+
+    m = regex.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#the\\ end');
+    expect(m![1]).toBe('the\\ end');
+    expect(m![2]).toBe('unwrapped');
+    expect(m!.index).toBe(68);
+
+    m = regex.exec(input);
+    expect(m).toBeNull();
+  });
+});
+
+describe('Finding First Tag', () => {
+  it('prefers wrapped when trigger present', () => {
+    assertFirstTag('#<foo> #bar', 'wrapped', 'foo');
+    assertFirstTag('abc #<xyz> #tag', 'wrapped', 'xyz');
+  });
+
+  it('finds unwrapped tags', () => {
+    assertFirstTag('#foo', 'unwrapped', 'foo');
+    assertFirstTag('text #tag', 'unwrapped', 'tag');
+  });
+
+  it('returns null when no tags found', () => {
+    assertFirstTag('no hashtag here', null);
+    assertFirstTag('\\#foo', null);
+    assertFirstTag('#<>', null);
+  });
+
+  it('selects earliest tag by position', () => {
+    assertFirstTag('#foo and #<bar>', 'unwrapped', 'foo');
+    assertFirstTag('xxx #<bar> then #baz', 'wrapped', 'bar');
+  });
+
+  it('skips escaped hashes', () => {
+    assertFirstTag('\\#fake #real', 'unwrapped', 'real');
+    assertFirstTag('\\#fake #<wrapped> #u', 'wrapped', 'wrapped');
+    assertFirstTag('\\#one \\#two #three', 'unwrapped', 'three');
+  });
+});
+
+describe('Resilience & Recovery', () => {
+  it('skips hash followed by space', () => {
+    assertFirstTag('# #tag', 'unwrapped', 'tag');
+    assertFirstTag('text # #tag', 'unwrapped', 'tag');
+  });
+
+  it('skips hash followed by strong terminator', () => {
+    assertFirstTag('#\n#tag', 'unwrapped', 'tag');
+    assertFirstTag('#\r\n#tag', 'unwrapped', 'tag');
+  });
+
+  it('handles consecutive hashes (##)', () => {
+    assertFirstTag('##tag', 'unwrapped', 'tag');
+    assertFirstTag('# #tag', 'unwrapped', 'tag');
+    assertFirstTag('##', null);
+    assertFirstTag('###tag', 'unwrapped', 'tag');
+  });
+
+  it('handles hashes followed by punctuation', () => {
+    assertFirstTag('#..#tag', 'unwrapped', 'tag');
+    assertFirstTag('#..#tag', 'unwrapped', 'tag');
+    assertFirstTag('#!#tag', 'unwrapped', '!');
+  });
+
+  it('recovers from complex invalid sequences', () => {
+    assertFirstTag('##foo', 'unwrapped', 'foo');
+    assertFirstTag('##foo#bar', 'unwrapped', 'foo');
+  });
+});
+
+describe('Finding All Wrapped Tags', () => {
+  it('finds multiple tags', () => {
+    const tags = findWrappedHashtags('#<a>#<b>#<c>');
+    expect(tags.map((t) => t.text)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('Unicode & Surrogates', () => {
+  it('handles emoji in unwrapped tags', () => {
+    assertFirstTag('#😀 stuff', 'unwrapped', '😀');
+    assertSynthesis('😀', '#😀');
+    assertUnwrappedRegExp('#😀', '😀');
+  });
+
+  it('handles emoji in wrapped tags', () => {
+    assertWrappedTags('#<a😀b>', ['a😀b']);
+    assertWrappedTags('#<x\\>😀>', ['x\\>😀']);
+  });
+
+  it('handles surrogate pairs at start', () => {
+    assertUnwrappedRegExp('#😀x', '😀x');
+    assertFirstTag('#😀x?', 'unwrapped', '😀x');
+  });
+});
+
+describe('Boundaries & EOI', () => {
+  it('handles start of line', () => {
+    assertFirstTag('#start', 'unwrapped', 'start');
+    assertUnwrappedRegExp('#line', 'line');
+    assertFirstTag('\\#start', null);
+    assertUnwrappedRegExp('\\#line', null);
+  });
+
+  it('handles end of line', () => {
+    assertUnwrappedRegExp('#tail\nnext', 'tail');
+    assertFirstTag('#tail\nnext', 'unwrapped', 'tail');
+    assertUnwrappedRegExp('#tail\r\nnext', 'tail');
+    assertFirstTag('#tail\r\nnext', 'unwrapped', 'tail');
+  });
+
+  it('handles end of text', () => {
+    assertFirstTag('some text #final', 'unwrapped', 'final');
+    assertUnwrappedRegExp('some text #final', 'final');
+    assertFirstTag('intro #<end>', 'wrapped', 'end');
+    assertFirstTag('#foo\\', 'unwrapped', 'foo');
+    assertUnwrappedRegExp('#foo\\', 'foo\\');
+  });
+
+  it('handles hash at EOI', () => {
+    assertFirstTag('#', null);
+    assertUnwrappedRegExp('#', null);
+  });
+
+  it('handles hash+backslash at EOI', () => {
+    assertFirstTag('#\\', null);
+    assertUnwrappedRegExp('#\\', null);
+  });
+
+  it('handles incomplete wrapped at EOI', () => {
+    assertFirstTag('#<', null);
+    assertWrappedTags('#<', []);
+  });
+
+  it('handles punctuation at EOI', () => {
+    assertFirstTag('list: #item,', 'unwrapped', 'item');
+    assertUnwrappedRegExp('list: #item.', 'item');
+    assertFirstTag('#tag:', 'unwrapped', 'tag');
+  });
+});
+
+describe('Edge Cases & Specific Behavior', () => {
+  it('allows escaped hash inside unwrapped', () => {
+    const m = unwrappedHashtagRegExp.exec('#foo\\#bar');
     expect(m).not.toBeNull();
     expect(m![1]).toBe('foo\\#bar');
-    expect(unescapeHashtagContent(m![1])).toBe('foo#bar');
+    expect(unescapeHashtagText(m![1])).toBe('foo#bar');
   });
 
-  it('lone trailing backslash in unwrapped', () => {
-    testFirst('#foo\\', 'unwrapped', 'foo');
-    testUnwrappedRegex('#foo\\', 'foo\\');
-  });
-});
-
-describe('Document / line boundaries', () => {
-  it('start of line unwrapped', () => {
-    testFirst('#start', 'unwrapped', 'start');
-    testUnwrappedRegex('#line', 'line');
+  it('does not fallback from wrapped to unwrapped', () => {
+    const res = findHashtag('#<tag');
+    expect(res).toBeNull();
   });
 
-  it('start of line escaped hash does not match', () => {
-    testFirst('\\#start', null);
-    testUnwrappedRegex('\\#line', null);
-  });
-
-  it('end of line unwrapped terminated by newline', () => {
-    testUnwrappedRegex('#tail\nnext', 'tail');
-    testFirst('#tail\nnext', 'unwrapped', 'tail');
-  });
-
-  it('end of line unwrapped terminated by CRLF', () => {
-    testUnwrappedRegex('#tail\r\nnext', 'tail');
-    testFirst('#tail\r\nnext', 'unwrapped', 'tail');
-  });
-
-  it('multiple lines earliest picks first valid', () => {
-    testFirst('#one\n\\#not\n#<wrapped> after', 'unwrapped', 'one');
-    testFirst('\\#skip\n#<wrapped> then #two', 'wrapped', 'wrapped');
-  });
-
-  it('hash followed by space then later tag', () => {
-    testFirst('# something #real', 'unwrapped', 'real');
-  });
-});
-
-describe('Unwrapped extended characters', () => {
-  it('slash allowed in unwrapped', () => {
-    testUnwrappedRegex('#foo/bar', 'foo/bar');
-    testFirst('#foo/bar test', 'unwrapped', 'foo/bar');
-  });
-
-  it('hyphen and underscore allowed', () => {
-    testUnwrappedRegex('#a-b_c', 'a-b_c');
-    testFirst('text #a-b_c end', 'unwrapped', 'a-b_c');
-  });
-
-  it('digits leading', () => {
-    testUnwrappedRegex('#123abc', '123abc');
-    testFirst('#123abc!', 'unwrapped', '123abc');
-  });
-
-  it('surrogate pair at start plus ascii', () => {
-    testUnwrappedRegex('#😀x', '😀x');
-    testFirst('#😀x?', 'unwrapped', '😀x');
-  });
-});
-
-describe('Wrapped edge / failure modes', () => {
-  it('wrapped with escaped terminator > inside', () => {
-    testWrapped('#<a\\>b>', ['a\\>b']);
-  });
-
-  it('wrapped invalid (empty) then valid later', () => {
-    const tags = findHashtagWrappedTags('#<> #<ok>');
-    expect(tags.map((t) => t.content)).toEqual(['ok']);
-  });
-
-  it('wrapped with escaped backslashes and angle mix', () => {
-    testWrapped('#<x\\\\\\<y\\>>', ['x\\\\\\<y\\>']);
-  });
-});
-
-describe('Earliest selection with escaped hashes', () => {
-  it('skip escaped hash before valid', () => {
-    testFirst('\\#fake #real', 'unwrapped', 'real');
-    testFirst('\\#fake #<wrapped> #u', 'wrapped', 'wrapped');
-  });
-
-  it('multiple escaped then one valid unwrapped', () => {
-    testFirst('\\#one \\#two #three', 'unwrapped', 'three');
-  });
-});
-
-describe('Trailing and boundary behaviors', () => {
-  it('unwrapped at end of text', () => {
-    testFirst('some text #final', 'unwrapped', 'final');
-    testUnwrappedRegex('some text #final', 'final');
-  });
-
-  it('wrapped at end of text', () => {
-    testFirst('intro #<end>', 'wrapped', 'end');
-  });
-
-  it('unwrapped immediately before punctuation terminator', () => {
-    testFirst('list: #item,', 'unwrapped', 'item');
-    testUnwrappedRegex('list: #item.', 'item');
-  });
-});
-
-describe('Synthesis additional checks', () => {
-  it('synthesis with slash stays unwrapped', () => {
-    testSynth('foo/bar', '#foo/bar');
-  });
-
-  it('synthesis with space forces wrapped', () => {
-    testSynth('foo bar baz', '#<foo bar baz>');
-  });
-
-  it('synthesis with angle brackets escaped in wrapped', () => {
-    testSynth('a <b> c', '#<a \\<b\\> c>');
-  });
-
-  it('synthesis angle brackets unwrapped', () => {
-    testSynth('a<b>c', '#a<b>c');
-  });
-});
-
-describe('Unwrapped angle brackets support', () => {
-  it('basic unwrapped < and >', () => {
-    testUnwrappedRegex('#foo<bar', 'foo<bar');
-    testUnwrappedRegex('#tag>a<b', 'tag>a<b');
-    testFirst('Text #foo<bar text', 'unwrapped', 'foo<bar');
-  });
-
-  it('punctuation continues before angle bracket', () => {
-    testUnwrappedRegex('#a!<b', 'a!<b');
-    testFirst('Check #a!<b out.', 'unwrapped', 'a!<b');
-  });
-
-  it('EOI with angle bracket', () => {
-    testUnwrappedRegex('#tag<', 'tag<');
-    testFirst('Last #tag<', 'unwrapped', 'tag<');
-  });
-});
-
-describe('Synthesis fixes for angle brackets', () => {
-  it('unwrapped syntax allowed for < and >', () => {
-    testSynth('a<b>c', '#a<b>c');
-  });
-
-  it('leading < is escaped in unwrapped synthesis', () => {
-    testSynth('<start', '#\\<start');
-    const parsed = findFirstHashtag('#\\<start');
-    expect(parsed).not.toBeNull();
-    expect(parsed?.tag).toBe('<start');
-  });
-
-  it('trailing > in unwrapped', () => {
-    testSynth('end>', '#end>');
-    const parsed = findFirstHashtag('#end>');
-    expect(parsed).not.toBeNull();
-    expect(parsed?.tag).toBe('end>');
-  });
-});
-
-describe('Strict Empty Content Rejection', () => {
-  it('reject hash + backslash at EOI', () => {
-    testFirst('#\\', null);
-    testUnwrappedRegex('#\\', null);
-  });
-
-  it('accept hash + escaped backslash', () => {
-    testFirst('#\\\\', 'unwrapped', '\\');
-    testUnwrappedRegex('#\\\\', '\\\\');
-  });
-});
-
-describe('Punctuation lookahead granularity', () => {
-  it('punctuation continues if followed by regular char', () => {
-    testUnwrappedRegex('#foo!a', 'foo!a');
-    testFirst('Tag #foo!a here', 'unwrapped', 'foo!a');
-  });
-
-  it('punctuation terminates if followed by punctuation', () => {
-    testUnwrappedRegex('#foo!!', 'foo');
-    testUnwrappedRegex('#foo..', 'foo');
-    testFirst('Tags #foo!! and #bar..', 'unwrapped', 'foo');
-  });
-
-  it('colon terminates at EOI but continues before letter', () => {
-    testUnwrappedRegex('#tag:', 'tag');
-    testUnwrappedRegex('#tag:a', 'tag:a');
-  });
-});
-
-describe('Synthesis special characters', () => {
-  it('synthesis of angle brackets only', () => {
-    testSynth('<>', '#\\<>');
-    testSynth('<<', '#\\<<');
-    testSynth('>>', '#>>');
-    testSynth('<<<', '#\\<<<');
-  });
-});
-
-describe('Complex angle bracket unwrapped', () => {
-  it('mixed angle brackets and text', () => {
-    testUnwrappedRegex('#\\<a>b<c>d', '\\<a>b<c>d');
-    testFirst('Check #\\<a>b<c>d out', 'unwrapped', '<a>b<c>d');
-  });
-
-  it('leading multiple angle brackets', () => {
-    testSynth('<<<a>', '#\\<<<a>');
-
-    const wrappedTag = findFirstHashtag('#<<<a>');
-    expect(wrappedTag?.type).toBe('wrapped');
-    expect(wrappedTag?.tag).toBe('<<a');
-
-    const unwrappedTag = findFirstHashtag('#\\<\\<\\<a>');
-    expect(unwrappedTag?.type).toBe('unwrapped');
-    expect(unwrappedTag?.tag).toBe('<<<a>');
-  });
-});
-
-describe('EOI (End of Input) Edge Cases', () => {
-  it('hash alone at EOI', () => {
-    testFirst('#', null);
-    testUnwrappedRegex('#', null);
-  });
-
-  it('wrapped trigger alone at EOI', () => {
-    testFirst('#<', null);
-    testWrapped('#<', []);
+  it('validates strict empty text rejection', () => {
+    assertFirstTag('#\\\\', 'unwrapped', '\\');
+    assertUnwrappedRegExp('#\\\\', '\\\\');
   });
 });
