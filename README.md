@@ -76,7 +76,6 @@ regular-char       = %x22 / %x24-2B / %x2D / %x2F-39 / %x3D
                    / %x3C-3E / %x40-10FFFF
                    ; excludes: STRONG, HASH, PUNCT, BACKSLASH
                    ; Note: < and > are valid characters in unwrapped form
-
 PUNCT              = "." / "," / ";" / ":" / "!" / "?"
 STRONG             = %x00-20 / %x7F-9F
                    ; whitespace, control characters, DEL, C1 controls
