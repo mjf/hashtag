@@ -301,9 +301,7 @@ export function createHashtag(text: string): string {
 
 type ExecResult = Array<string> & { index?: number };
 
-function createHashtagRegExpMock(
-  filterType?: 'wrapped' | 'unwrapped',
-): {
+function createHashtagRegExp(filterType?: 'wrapped' | 'unwrapped'): {
   lastIndex: number;
   exec: (input: string) => ExecResult | null;
   reset: () => void;
@@ -364,7 +362,6 @@ function createHashtagRegExpMock(
   };
 }
 
-export const unwrappedHashtagRegExp =
-  createHashtagRegExpMock('unwrapped');
-export const wrappedHashtagRegExp = createHashtagRegExpMock('wrapped');
-export const hashtagRegExp = createHashtagRegExpMock();
+export const unwrappedHashtagRegExp = createHashtagRegExp('unwrapped');
+export const wrappedHashtagRegExp = createHashtagRegExp('wrapped');
+export const hashtagRegExp = createHashtagRegExp();
