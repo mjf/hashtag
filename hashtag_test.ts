@@ -220,7 +220,7 @@ describe('RegExp Mock (State)', () => {
 describe('Complex Regex Iteration', () => {
   const input =
     '\\# #<long name> #test\\#ing # #\\<magic> ## ' +
-    '#🚀.launch #\n #<skip> and #the\\ end.';
+    '#🚀.launch #\n #<name> and #the\\ end.';
 
   it('iterates unwrapped regex over complex input', () => {
     const regex = unwrappedHashtagRegExp;
@@ -266,8 +266,8 @@ describe('Complex Regex Iteration', () => {
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
-    expect(m![0]).toBe('#<skip>');
-    expect(m![1]).toBe('skip');
+    expect(m![0]).toBe('#<name>');
+    expect(m![1]).toBe('name');
     expect(m!.index).toBe(56);
 
     m = regex.exec(input);
@@ -308,8 +308,8 @@ describe('Complex Regex Iteration', () => {
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
-    expect(m![0]).toBe('#<skip>');
-    expect(m![1]).toBe('skip');
+    expect(m![0]).toBe('#<name>');
+    expect(m![1]).toBe('name');
     expect(m![2]).toBe(HashtagType.Wrapped);
     expect(m!.index).toBe(56);
 
