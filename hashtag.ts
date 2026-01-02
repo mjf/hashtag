@@ -70,21 +70,34 @@ function extractWrappedTag(
   }
   const startIndex = hashIndex + 2;
   let pos = startIndex;
+  // 0 = even number of backslashes
+  // 1 = odd (escaped)
+  let slashParity = 0;
   while (pos < n) {
-    const closeBracketIndex = input.indexOf('>', pos);
-    if (closeBracketIndex === -1) {
-      return null;
+    const code = input.charCodeAt(pos);
+    if (code === 0x5c) {
+      // 0x5c Backslash
+      slashParity ^= 1;
+      pos += 1;
+      continue;
     }
-    if (!isCharEscaped(input, closeBracketIndex)) {
-      if (closeBracketIndex === startIndex) {
-        return null;
+    if (code === 0x3e) {
+      // 0x3e Greater-than Sign
+      if (slashParity === 0) {
+        if (pos === startIndex) {
+          return null;
+        }
+        return {
+          end: pos + 1,
+          text: input.slice(startIndex, pos),
+        };
       }
-      return {
-        end: closeBracketIndex + 1,
-        text: input.slice(startIndex, closeBracketIndex),
-      };
+      slashParity = 0;
+      pos += 1;
+      continue;
     }
-    pos = closeBracketIndex + 1;
+    slashParity = 0;
+    pos += isSurrogatePair(input, pos) ? 2 : 1;
   }
   return null;
 }
