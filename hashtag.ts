@@ -87,6 +87,55 @@ function hasLoneSurrogate(input: string, pos: number): boolean {
   return false;
 }
 
+function isLineBreakChar(code: number): boolean {
+  // 0x0d CR
+  // 0x0a LF
+  return code === 0x0a || code === 0x0d;
+}
+
+function isHorizontalWhitespace(code: number): boolean {
+  // 0x20 SP
+  // 0x09 HT
+  return code === 0x20 || code === 0x09;
+}
+
+function normalizeWrappedText(text: string): string {
+  let result = '';
+  let i = 0;
+  while (i < text.length) {
+    const code = text.charCodeAt(i);
+    if (code === 0x0d) {
+      if (i + 1 < text.length && text.charCodeAt(i + 1) === 0x0a) {
+        i += 2;
+      } else {
+        i += 1;
+      }
+      result += ' ';
+      while (
+        i < text.length &&
+        isHorizontalWhitespace(text.charCodeAt(i))
+      ) {
+        i += 1;
+      }
+      continue;
+    }
+    if (code === 0x0a) {
+      i += 1;
+      result += ' ';
+      while (
+        i < text.length &&
+        isHorizontalWhitespace(text.charCodeAt(i))
+      ) {
+        i += 1;
+      }
+      continue;
+    }
+    result += text[i];
+    i += 1;
+  }
+  return result;
+}
+
 function extractWrappedTag(
   input: string,
   hashIndex: number,
@@ -144,11 +193,14 @@ function extractUnwrappedTag(
       break;
     }
     const code = input.charCodeAt(pos);
+    if (isLineBreakChar(code)) {
+      break;
+    }
     if (code === 0x5c) {
       // 0x5c Backslash
       if (pos + 1 < n) {
-        if (hasLoneSurrogate(input, pos + 1)) {
-          pos += 1;
+        const next = input.charCodeAt(pos + 1);
+        if (isLineBreakChar(next) || hasLoneSurrogate(input, pos + 1)) {
           break;
         }
         pos += isSurrogatePair(input, pos + 1) ? 3 : 2;
@@ -198,6 +250,7 @@ function* scanAllHashtags(
   // 0 = even number of backslashes
   // 1 = odd (escaped)
   let slashParity = 0;
+
   while (i < n) {
     if (hasLoneSurrogate(input, i)) {
       slashParity = 0;
@@ -283,6 +336,9 @@ function canBeUnwrapped(text: string): boolean {
       return false;
     }
     const code = text.charCodeAt(i);
+    if (isLineBreakChar(code)) {
+      return false;
+    }
     if (isStrongTerminator(code)) {
       return false;
     }
@@ -295,6 +351,10 @@ function escapeAsUnwrapped(text: string): string {
   let result = '';
   for (let i = 0; i < text.length; ) {
     if (hasLoneSurrogate(text, i)) {
+      return '';
+    }
+    const code = text.charCodeAt(i);
+    if (isLineBreakChar(code)) {
       return '';
     }
     const ch = text[i];
@@ -349,13 +409,17 @@ export function createHashtag(text: string): string {
 function toMatch(item: ScanResult): HashtagMatch {
   const raw =
     item.type === 'wrapped' ? `#<${item.rawText}>` : `#${item.rawText}`;
+  const unescaped = unescapeHashtagText(item.rawText);
   return {
     type: item.type,
     start: item.start,
     end: item.end,
     raw,
     rawText: item.rawText,
-    text: unescapeHashtagText(item.rawText),
+    text:
+      item.type === 'wrapped'
+        ? normalizeWrappedText(unescaped)
+        : unescaped,
   };
 }
 
@@ -387,12 +451,14 @@ export function hashtagPattern(
   const sticky = options.sticky ?? false;
   const capture = options.capture ?? 'rawText';
   const includeTypeGroup = type === 'any';
+
   const state = {
     lastIndex: 0,
   };
 
   function execInternal(input: string): HashtagMatch | null {
     const startIndex = global || sticky ? state.lastIndex : 0;
+
     if (sticky) {
       for (const item of scanAllHashtags(input, startIndex)) {
         if (item.start !== startIndex) {
@@ -408,12 +474,14 @@ export function hashtagPattern(
       }
       return null;
     }
+
     for (const item of scanAllHashtags(input, startIndex)) {
       if (type !== 'any' && item.type !== type) {
         continue;
       }
       return toMatch(item);
     }
+
     if (global || sticky) {
       state.lastIndex = 0;
     }

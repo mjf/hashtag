@@ -108,6 +108,11 @@ describe('Tag Synthesis', () => {
     expect(res).not.toBeNull();
     expect(res?.text).toBe(text);
   });
+
+  it('rejects newlines in unwrapped synthesis', () => {
+    expect(createHashtag('a\nb')).toBe('#<a\nb>');
+    expect(createHashtag('a\rb')).toBe('#<a\rb>');
+  });
 });
 
 describe('Wrapped Tags', () => {
@@ -152,6 +157,21 @@ describe('Wrapped Tags', () => {
     assertWrappedTags('#<foo\\>', []);
     assertWrappedTags('#<', []);
   });
+
+  it('normalizes line breaks in wrapped text', () => {
+    const r = hashtagPattern({ type: 'wrapped', capture: 'text' });
+    const m = r.exec('#<a\nb>');
+    expect(m).not.toBeNull();
+    expect(m![1]).toBe('a b');
+
+    const m2 = r.exec('#<a\r\n  b>');
+    expect(m2).not.toBeNull();
+    expect(m2![1]).toBe('a b');
+
+    const m3 = r.exec('#<a\r\tb>');
+    expect(m3).not.toBeNull();
+    expect(m3![1]).toBe('a b');
+  });
 });
 
 describe('Unwrapped Tags', () => {
@@ -193,6 +213,12 @@ describe('Unwrapped Tags', () => {
     assertUnwrappedRegExp('#tag>a<b', 'tag>a<b');
     assertUnwrappedRegExp('#a!<b', 'a!<b');
     assertUnwrappedRegExp('#tag<', 'tag<');
+  });
+
+  it('does not allow escaped newlines', () => {
+    assertUnwrappedRegExp('#foo\\\nbar', 'foo');
+    assertUnwrappedRegExp('#foo\\\r\nbar', 'foo');
+    assertUnwrappedRegExp('#foo\\\rbar', 'foo');
   });
 });
 
@@ -306,7 +332,7 @@ describe('RegExp Contract', () => {
   });
 
   it('matchAllMatches yields typed matches with raw/rawText/text', () => {
-    const input = '#<a\\>b> #c\\ d';
+    const input = '#<a\\>b>\n#c\\ d';
     const r = hashtagPattern({ type: 'any' });
     const ms = Array.from(r.matchAllMatches(input));
     expect(ms.map((m) => m.raw)).toEqual(['#<a\\>b>', '#c\\ d']);

@@ -38,6 +38,11 @@ text. Therefore, `#<<example>` is valid and equivalent to
 wrapped hashtag format a resulting hashtag text must contain at least
 one _valid_ character, so `#<>` is not a valid hashtag.
 
+Wrapped hashtags may span multiple lines. Line breaks (`\n`, `\r`, or
+`\r\n`) in wrapped hashtags are normalized to a single space character,
+and any horizontal whitespace immediately following the line break is
+ignored.
+
 # GRAMMAR
 
 ```abnf
@@ -137,7 +142,9 @@ Represents a parsed hashtag in a source string.
 - `start` and `end` are UTF-16 indices, with `end` being exclusive.
 - `raw` is the full matched token, including the prefix and wrappers.
 - `rawText` is the escaped payload (no wrappers).
-- `text` is the unescaped payload.
+- `text` is the unescaped payload. For wrapped hashtags, line breaks are
+  normalized to a single space and any following horizontal whitespace
+  is ignored.
 
 Malformed surrogate code units are rejected inside hashtags.
 
@@ -232,9 +239,6 @@ function createHashtag(text: string): string
 
 Generates a hashtag string from the provided text, automatically
 selecting the wrapped or unwrapped format based on the content.
-
-If the input contains malformed surrogate code units, `createHashtag`
-returns an empty string.
 
 ```typescript
 createHashtag("hello world");
