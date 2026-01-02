@@ -101,8 +101,9 @@ ANY            = %x00-10FFFF
 The parser functions as a deterministic linear-time scanner. It
 traverses the input in a single pass, utilizing a _finite state machine_
 (FSM) to handle delimiter detection and Unicode surrogate pairs. The
-algorithm exhibits a time complexity of _O(n)_ and auxiliary space
-complexity of _O(1)_.
+scanner state exhibits a time complexity of _O(n)_ and auxiliary space
+complexity of _O(1)_. Returned values allocate proportionally to the
+number and size of matches.
 
 The syntax exceeds the capabilities of standard regular expressions.
 Determining if a delimiter is escaped requires tracking the parity (even
@@ -112,52 +113,116 @@ validate punctuation characters within unwrapped tags.
 
 # API
 
-## `Hashtag`
-
-```typescript
-type Hashtag =
-  | { type: HashtagType.Wrapped; text: string }
-  | { type: HashtagType.Unwrapped; text: string };
-```
-
-Represents a parsed hashtag containing the format type and the processed
-text content.
-
-```typescript
-const tag: Hashtag = { type: HashtagType.Unwrapped, text: "example" };
-```
-
 ## `HashtagType`
 
 ```typescript
-enum HashtagType {
-  Unwrapped = 'unwrapped',
-  Wrapped   = 'wrapped',
-}
+type HashtagType = 'unwrapped' | 'wrapped';
 ```
 
-Enumeration distinguishing between the two supported hashtag formats.
+## `HashtagMatch`
 
 ```typescript
-const type = HashtagType.Wrapped;
-```
-
-## `WrappedHashtag`
-
-```typescript
-type WrappedHashtag = {
+type HashtagMatch = {
+  type: HashtagType;
   start: number;
   end: number;
+  raw: string;
+  rawText: string;
   text: string;
 };
 ```
 
-Represents a wrapped hashtag found within a source string, including the
-start and end indices of the raw match and the processed text content.
+Represents a parsed hashtag in a source string.
+
+- `start` and `end` are UTF-16 indices, with `end` being exclusive.
+- `raw` is the full matched token, including the prefix and wrappers.
+- `rawText` is the escaped payload (no wrappers).
+- `text` is the unescaped payload.
+
+Malformed surrogate code units are rejected inside hashtags.
+
+## `hashtagPattern`
 
 ```typescript
-const match: WrappedHashtag = { start: 0, end: 9, text: "example" };
+type HashtagPatternOptions = {
+  type?: HashtagType | 'any';
+  global?: boolean;
+  sticky?: boolean;
+  capture?: 'rawText' | 'text';
+};
+
+type HashtagPattern = {
+  source: string;
+  flags: string;
+  lastIndex: number;
+
+  exec(input: string): RegExpExecArray | null;
+  test(input: string): boolean;
+  reset(): void;
+
+  execMatch(input: string): HashtagMatch | null;
+  matchAll(input: string): IterableIterator<RegExpExecArray>;
+  matchAllMatches(input: string): IterableIterator<HashtagMatch>;
+};
+
+function hashtagPattern(options?: HashtagPatternOptions): HashtagPattern;
 ```
+
+Creates a RegExp-like matcher.
+
+- `global` defaults to `false`, matching JavaScript `RegExp` behavior.
+- If `type` is `'any'`, `exec()` returns `[full, payload, type]`.
+- If `type` is `'wrapped'` or `'unwrapped'`, `exec()` returns
+  `[full, payload]`.
+- `payload` is `rawText` by default; set `capture: 'text'` to capture
+  the unescaped text instead.
+- If `sticky` is `true`, a match is accepted only at `lastIndex`.
+
+If `global` or `sticky` is enabled, a failed `exec()` resets `lastIndex`
+to `0`.
+
+## Built-in patterns
+
+```typescript
+const hashtag: HashtagPattern;
+const wrappedHashtag: HashtagPattern;
+const unwrappedHashtag: HashtagPattern;
+```
+
+These are equivalent to:
+
+```typescript
+hashtagPattern({ type: 'any' });
+hashtagPattern({ type: 'wrapped' });
+hashtagPattern({ type: 'unwrapped' });
+```
+
+## Typed helpers
+
+```typescript
+type FindOptions = {
+  type?: HashtagType | 'any';
+  fromIndex?: number;
+};
+
+function findFirstHashtag(
+  input: string,
+  options?: FindOptions,
+): HashtagMatch | null;
+
+function findAllHashtags(
+  input: string,
+  options?: FindOptions,
+): HashtagMatch[];
+
+function iterateHashtags(
+  input: string,
+  options?: FindOptions,
+): IterableIterator<HashtagMatch>;
+```
+
+These helpers operate as a thin layer on top of `hashtagPattern` with
+`global: true` and use `fromIndex` to initialize the scan position.
 
 ## `createHashtag`
 
@@ -168,35 +233,12 @@ function createHashtag(text: string): string
 Generates a hashtag string from the provided text, automatically
 selecting the wrapped or unwrapped format based on the content.
 
+If the input contains malformed surrogate code units, `createHashtag`
+returns an empty string.
+
 ```typescript
 createHashtag("hello world");
 createHashtag("simple");
-```
-
-## `findHashtag`
-
-```typescript
-function findHashtag(input: string): Hashtag | null
-```
-
-Parses the input string and returns the first valid hashtag found, or
-`null` if none exists.
-
-```typescript
-findHashtag("Check #example.");
-```
-
-## `findWrappedHashtags`
-
-```typescript
-function findWrappedHashtags(input: string): WrappedHashtag[]
-```
-
-Scans the input string and returns an array of all wrapped hashtags,
-including their positional indices in the original text.
-
-```typescript
-findWrappedHashtags("#<one> and #<two>");
 ```
 
 ## `unescapeHashtagText`
@@ -205,60 +247,11 @@ findWrappedHashtags("#<one> and #<two>");
 function unescapeHashtagText(text: string): string
 ```
 
-Removes escape backslashes from a raw hashtag string, returning the
+Removes escape backslashes from a raw hashtag payload, returning the
 clean text content.
 
 ```typescript
 unescapeHashtagText("foo\\ bar");
-```
-
-## `hashtagRegExp`
-
-```typescript
-const hashtagRegExp: {
-  lastIndex: number;
-  exec(input: string): Array<string> & { index?: number } | null;
-  reset(): void;
-}
-```
-
-A regular expression-like object that matches both wrapped and unwrapped
-hashtags, providing `exec`, `lastIndex`, and `reset` methods.
-
-```typescript
-const match = hashtagRegExp.exec("Text #example");
-```
-
-## `unwrappedHashtagRegExp`
-
-```typescript
-const unwrappedHashtagRegExp: {
-  lastIndex: number;
-  exec(input: string): Array<string> & { index?: number } | null;
-  reset(): void;
-}
-```
-
-A regular expression-like object that matches only unwrapped hashtags.
-
-```typescript
-const match = unwrappedHashtagRegExp.exec("This is #tag");
-```
-
-## `wrappedHashtagRegExp`
-
-```typescript
-const wrappedHashtagRegExp: {
-  lastIndex: number;
-  exec(input: string): Array<string> & { index?: number } | null;
-  reset(): void;
-}
-```
-
-A regular expression-like object that matches only wrapped hashtags.
-
-```typescript
-const match = wrappedHashtagRegExp.exec("This is #<tag>");
 ```
 
 # LICENSE

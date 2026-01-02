@@ -1,28 +1,31 @@
 import {
   createHashtag,
-  findHashtag,
-  findWrappedHashtags,
-  HashtagType,
-  hashtagRegExp,
-  wrappedHashtagRegExp,
+  findFirstHashtag,
+  findAllHashtags,
+  hashtagPattern,
+  hashtag,
+  unwrappedHashtag,
   unescapeHashtagText,
-  unwrappedHashtagRegExp,
 } from './hashtag.ts';
 
 import { describe, it } from '@std/testing/bdd';
 import { expect } from '@std/expect';
 
+type HashtagType = 'wrapped' | 'unwrapped';
+
 function assertWrappedTags(input: string, expected: string[]) {
-  const tags = findWrappedHashtags(input).map((t) => t.text);
+  const tags = findAllHashtags(input, { type: 'wrapped' }).map(
+    (t) => t.rawText,
+  );
   expect(tags).toEqual(expected);
 }
 
 function assertFirstTag(
   input: string,
-  type: HashtagType.Wrapped | HashtagType.Unwrapped | null,
+  type: HashtagType | null,
   text?: string,
 ) {
-  const res = findHashtag(input);
+  const res = findFirstHashtag(input);
   if (type === null) {
     expect(res).toBeNull();
   } else {
@@ -33,7 +36,9 @@ function assertFirstTag(
 }
 
 function assertUnwrappedRegExp(input: string, expected: string | null) {
-  const m = unwrappedHashtagRegExp.exec(input);
+  const regex = hashtagPattern({ type: 'unwrapped', global: true });
+  regex.reset();
+  const m = regex.exec(input);
   if (expected === null) {
     expect(m).toBeNull();
   } else {
@@ -92,14 +97,14 @@ describe('Tag Synthesis', () => {
 
   it('handles empty text', () => {
     const str = createHashtag('');
-    const res = findHashtag(str);
+    const res = findFirstHashtag(str);
     expect(res).toBeNull();
   });
 
   it('roundtrips tag starting with escaped <', () => {
     const text = '<start';
     const str = createHashtag(text);
-    const res = findHashtag(str);
+    const res = findFirstHashtag(str);
     expect(res).not.toBeNull();
     expect(res?.text).toBe(text);
   });
@@ -191,29 +196,152 @@ describe('Unwrapped Tags', () => {
   });
 });
 
-describe('RegExp Mock (State)', () => {
-  it('supports global iteration', () => {
-    const input = 'text #one #<wrapped> #two #<three> #four';
-    const regexp = unwrappedHashtagRegExp;
+describe('RegExp Contract', () => {
+  it('non-global exec does not advance', () => {
+    const input = 'text #one #two';
+    const r = unwrappedHashtag;
+    r.reset();
 
-    let m = regexp.exec(input);
-    expect(m![1]).toBe('one');
+    const m1 = r.exec(input);
+    expect(m1).not.toBeNull();
+    expect(m1![1]).toBe('one');
+    expect(r.lastIndex).toBe(0);
 
-    m = regexp.exec(input);
-    expect(m![1]).toBe('two');
-
-    m = regexp.exec(input);
-    expect(m![1]).toBe('four');
-
-    m = regexp.exec(input);
-    expect(m).toBeNull();
+    const m2 = r.exec(input);
+    expect(m2).not.toBeNull();
+    expect(m2![1]).toBe('one');
+    expect(r.lastIndex).toBe(0);
   });
 
-  it('resets on new input', () => {
-    const regexp = unwrappedHashtagRegExp;
-    regexp.exec('#first');
-    const m = regexp.exec('#second');
-    expect(m![1]).toBe('second');
+  it('global exec advances and updates lastIndex', () => {
+    const input = 'text #one #two';
+    const r = hashtagPattern({ type: 'unwrapped', global: true });
+    r.reset();
+
+    const m1 = r.exec(input);
+    expect(m1).not.toBeNull();
+    expect(m1![1]).toBe('one');
+    expect(r.lastIndex).toBe((m1!.index ?? 0) + m1![0].length);
+
+    const m2 = r.exec(input);
+    expect(m2).not.toBeNull();
+    expect(m2![1]).toBe('two');
+    expect(r.lastIndex).toBe((m2!.index ?? 0) + m2![0].length);
+
+    const m3 = r.exec(input);
+    expect(m3).toBeNull();
+    expect(r.lastIndex).toBe(0);
+  });
+
+  it('sticky requires a match at lastIndex', () => {
+    const input = 'text #one #two';
+    const r = hashtagPattern({
+      type: 'unwrapped',
+      sticky: true,
+      global: true,
+    });
+
+    r.lastIndex = 0;
+    let m = r.exec(input);
+    expect(m).toBeNull();
+    expect(r.lastIndex).toBe(0);
+
+    r.lastIndex = 5;
+    m = r.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#one');
+    expect(m!.index).toBe(5);
+    expect(r.lastIndex).toBe(9);
+
+    m = r.exec(input);
+    expect(m).toBeNull();
+    expect(r.lastIndex).toBe(0);
+
+    r.lastIndex = 10;
+    m = r.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#two');
+    expect(m!.index).toBe(10);
+  });
+
+  it('captures type as group 2 for combined matcher', () => {
+    const r = hashtag;
+    r.reset();
+
+    const m = r.exec('#<x>');
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#<x>');
+    expect(m![1]).toBe('x');
+    expect(m![2]).toBe('wrapped');
+  });
+
+  it('capture:text returns unescaped payload', () => {
+    const r = hashtagPattern({ type: 'wrapped', capture: 'text' });
+
+    const m1 = r.exec('#<foo\\>>');
+    expect(m1).not.toBeNull();
+    expect(m1![1]).toBe('foo>');
+
+    const m2 = r.exec('#<foo\\<bar\\>>');
+    expect(m2).not.toBeNull();
+    expect(m2![1]).toBe('foo<bar>');
+  });
+
+  it('matchAll returns same sequence as global exec', () => {
+    const input = 'A #one B #<two> C #three';
+    const r1 = hashtagPattern({ type: 'any', global: true });
+    const seq1: string[] = [];
+    while (true) {
+      const m = r1.exec(input);
+      if (!m) break;
+      seq1.push(m[0]);
+    }
+
+    const r2 = hashtagPattern({ type: 'any' });
+    const seq2: string[] = [];
+    for (const m of r2.matchAll(input)) {
+      seq2.push(m[0]);
+    }
+    expect(seq2).toEqual(seq1);
+  });
+
+  it('matchAllMatches yields typed matches with raw/rawText/text', () => {
+    const input = '#<a\\>b> #c\\ d';
+    const r = hashtagPattern({ type: 'any' });
+    const ms = Array.from(r.matchAllMatches(input));
+    expect(ms.map((m) => m.raw)).toEqual(['#<a\\>b>', '#c\\ d']);
+    expect(ms.map((m) => m.rawText)).toEqual(['a\\>b', 'c\\ d']);
+    expect(ms.map((m) => m.text)).toEqual(['a>b', 'c d']);
+  });
+});
+
+describe('Malformed Surrogates', () => {
+  it('rejects lone high surrogate in unwrapped tag', () => {
+    const s = `#\uD800x`;
+    const m = hashtagPattern({ type: 'unwrapped' }).exec(s);
+    expect(m).toBeNull();
+    expect(findFirstHashtag(s)).toBeNull();
+  });
+
+  it('rejects lone low surrogate in unwrapped tag', () => {
+    const s = `#\uDC00x`;
+    const m = hashtagPattern({ type: 'unwrapped' }).exec(s);
+    expect(m).toBeNull();
+    expect(findFirstHashtag(s)).toBeNull();
+  });
+
+  it('rejects lone surrogate in wrapped tag', () => {
+    const s = `#<\uD800>`;
+    const m = hashtagPattern({ type: 'wrapped' }).exec(s);
+    expect(m).toBeNull();
+    expect(findFirstHashtag(s)).toBeNull();
+  });
+
+  it('accepts valid surrogate pairs', () => {
+    const s = '#😀x';
+    const m = hashtagPattern({ type: 'unwrapped' }).exec(s);
+    expect(m).not.toBeNull();
+    expect(m![1]).toBe('😀x');
   });
 });
 
@@ -223,7 +351,7 @@ describe('Complex Regex Iteration', () => {
     '#🚀.launch #\n #<name> and #the\\ end.';
 
   it('iterates unwrapped regex over complex input', () => {
-    const regex = unwrappedHashtagRegExp;
+    const regex = hashtagPattern({ type: 'unwrapped', global: true });
     let m;
 
     m = regex.exec(input);
@@ -255,7 +383,7 @@ describe('Complex Regex Iteration', () => {
   });
 
   it('iterates wrapped regex over complex input', () => {
-    const regex = wrappedHashtagRegExp;
+    const regex = hashtagPattern({ type: 'wrapped', global: true });
     let m;
 
     m = regex.exec(input);
@@ -275,49 +403,49 @@ describe('Complex Regex Iteration', () => {
   });
 
   it('iterates combined (hashtag) regex over complex input', () => {
-    const regex = hashtagRegExp;
+    const regex = hashtagPattern({ type: 'any', global: true });
     let m;
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
     expect(m![0]).toBe('#<long name>');
     expect(m![1]).toBe('long name');
-    expect(m![2]).toBe(HashtagType.Wrapped);
+    expect(m![2]).toBe('wrapped');
     expect(m!.index).toBe(3);
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
     expect(m![0]).toBe('#test\\#ing');
     expect(m![1]).toBe('test\\#ing');
-    expect(m![2]).toBe(HashtagType.Unwrapped);
+    expect(m![2]).toBe('unwrapped');
     expect(m!.index).toBe(16);
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
     expect(m![0]).toBe('#\\<magic>');
     expect(m![1]).toBe('\\<magic>');
-    expect(m![2]).toBe(HashtagType.Unwrapped);
+    expect(m![2]).toBe('unwrapped');
     expect(m!.index).toBe(29);
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
     expect(m![0]).toBe('#🚀.launch');
     expect(m![1]).toBe('🚀.launch');
-    expect(m![2]).toBe(HashtagType.Unwrapped);
+    expect(m![2]).toBe('unwrapped');
     expect(m!.index).toBe(42);
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
     expect(m![0]).toBe('#<name>');
     expect(m![1]).toBe('name');
-    expect(m![2]).toBe(HashtagType.Wrapped);
+    expect(m![2]).toBe('wrapped');
     expect(m!.index).toBe(56);
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
     expect(m![0]).toBe('#the\\ end');
     expect(m![1]).toBe('the\\ end');
-    expect(m![2]).toBe(HashtagType.Unwrapped);
+    expect(m![2]).toBe('unwrapped');
     expect(m!.index).toBe(68);
 
     m = regex.exec(input);
@@ -327,13 +455,13 @@ describe('Complex Regex Iteration', () => {
 
 describe('Finding First Tag', () => {
   it('prefers wrapped when trigger present', () => {
-    assertFirstTag('#<foo> #bar', HashtagType.Wrapped, 'foo');
-    assertFirstTag('abc #<xyz> #tag', HashtagType.Wrapped, 'xyz');
+    assertFirstTag('#<foo> #bar', 'wrapped', 'foo');
+    assertFirstTag('abc #<xyz> #tag', 'wrapped', 'xyz');
   });
 
   it('finds unwrapped tags', () => {
-    assertFirstTag('#foo', HashtagType.Unwrapped, 'foo');
-    assertFirstTag('text #tag', HashtagType.Unwrapped, 'tag');
+    assertFirstTag('#foo', 'unwrapped', 'foo');
+    assertFirstTag('text #tag', 'unwrapped', 'tag');
   });
 
   it('returns null when no tags found', () => {
@@ -343,65 +471,57 @@ describe('Finding First Tag', () => {
   });
 
   it('selects earliest tag by position', () => {
-    assertFirstTag('#foo and #<bar>', HashtagType.Unwrapped, 'foo');
-    assertFirstTag('xxx #<bar> then #baz', HashtagType.Wrapped, 'bar');
+    assertFirstTag('#foo and #<bar>', 'unwrapped', 'foo');
+    assertFirstTag('xxx #<bar> then #baz', 'wrapped', 'bar');
   });
 
   it('skips escaped hashes', () => {
-    assertFirstTag('\\#fake #real', HashtagType.Unwrapped, 'real');
-    assertFirstTag(
-      '\\#fake #<wrapped> #u',
-      HashtagType.Wrapped,
-      HashtagType.Wrapped,
-    );
-    assertFirstTag(
-      '\\#one \\#two #three',
-      HashtagType.Unwrapped,
-      'three',
-    );
+    assertFirstTag('\\#fake #real', 'unwrapped', 'real');
+    assertFirstTag('\\#fake #<wrapped> #u', 'wrapped', 'wrapped');
+    assertFirstTag('\\#one \\#two #three', 'unwrapped', 'three');
   });
 });
 
 describe('Resilience & Recovery', () => {
   it('skips hash followed by space', () => {
-    assertFirstTag('# #tag', HashtagType.Unwrapped, 'tag');
-    assertFirstTag('text # #tag', HashtagType.Unwrapped, 'tag');
+    assertFirstTag('# #tag', 'unwrapped', 'tag');
+    assertFirstTag('text # #tag', 'unwrapped', 'tag');
   });
 
   it('skips hash followed by strong terminator', () => {
-    assertFirstTag('#\n#tag', HashtagType.Unwrapped, 'tag');
-    assertFirstTag('#\r\n#tag', HashtagType.Unwrapped, 'tag');
+    assertFirstTag('#\n#tag', 'unwrapped', 'tag');
+    assertFirstTag('#\r\n#tag', 'unwrapped', 'tag');
   });
 
   it('handles consecutive hashes (##)', () => {
-    assertFirstTag('##tag', HashtagType.Unwrapped, 'tag');
-    assertFirstTag('# #tag', HashtagType.Unwrapped, 'tag');
+    assertFirstTag('##tag', 'unwrapped', 'tag');
+    assertFirstTag('# #tag', 'unwrapped', 'tag');
     assertFirstTag('##', null);
-    assertFirstTag('###tag', HashtagType.Unwrapped, 'tag');
+    assertFirstTag('###tag', 'unwrapped', 'tag');
   });
 
   it('handles hashes followed by punctuation', () => {
-    assertFirstTag('#..#tag', HashtagType.Unwrapped, 'tag');
-    assertFirstTag('#..#tag', HashtagType.Unwrapped, 'tag');
-    assertFirstTag('#!#tag', HashtagType.Unwrapped, '!');
+    assertFirstTag('#..#tag', 'unwrapped', 'tag');
+    assertFirstTag('#..#tag', 'unwrapped', 'tag');
+    assertFirstTag('#!#tag', 'unwrapped', '!');
   });
 
   it('recovers from complex invalid sequences', () => {
-    assertFirstTag('##foo', HashtagType.Unwrapped, 'foo');
-    assertFirstTag('##foo#bar', HashtagType.Unwrapped, 'foo');
+    assertFirstTag('##foo', 'unwrapped', 'foo');
+    assertFirstTag('##foo#bar', 'unwrapped', 'foo');
   });
 });
 
 describe('Finding All Wrapped Tags', () => {
   it('finds multiple tags', () => {
-    const tags = findWrappedHashtags('#<a>#<b>#<c>');
-    expect(tags.map((t) => t.text)).toEqual(['a', 'b', 'c']);
+    const tags = findAllHashtags('#<a>#<b>#<c>', { type: 'wrapped' });
+    expect(tags.map((t) => t.rawText)).toEqual(['a', 'b', 'c']);
   });
 });
 
 describe('Unicode & Surrogates', () => {
   it('handles emoji in unwrapped tags', () => {
-    assertFirstTag('#😀 stuff', HashtagType.Unwrapped, '😀');
+    assertFirstTag('#😀 stuff', 'unwrapped', '😀');
     assertSynthesis('😀', '#😀');
     assertUnwrappedRegExp('#😀', '😀');
   });
@@ -413,13 +533,13 @@ describe('Unicode & Surrogates', () => {
 
   it('handles surrogate pairs at start', () => {
     assertUnwrappedRegExp('#😀x', '😀x');
-    assertFirstTag('#😀x?', HashtagType.Unwrapped, '😀x');
+    assertFirstTag('#😀x?', 'unwrapped', '😀x');
   });
 });
 
 describe('Boundaries & EOI', () => {
   it('handles start of line', () => {
-    assertFirstTag('#start', HashtagType.Unwrapped, 'start');
+    assertFirstTag('#start', 'unwrapped', 'start');
     assertUnwrappedRegExp('#line', 'line');
     assertFirstTag('\\#start', null);
     assertUnwrappedRegExp('\\#line', null);
@@ -427,16 +547,16 @@ describe('Boundaries & EOI', () => {
 
   it('handles end of line', () => {
     assertUnwrappedRegExp('#tail\nnext', 'tail');
-    assertFirstTag('#tail\nnext', HashtagType.Unwrapped, 'tail');
+    assertFirstTag('#tail\nnext', 'unwrapped', 'tail');
     assertUnwrappedRegExp('#tail\r\nnext', 'tail');
-    assertFirstTag('#tail\r\nnext', HashtagType.Unwrapped, 'tail');
+    assertFirstTag('#tail\r\nnext', 'unwrapped', 'tail');
   });
 
   it('handles end of text', () => {
-    assertFirstTag('some text #final', HashtagType.Unwrapped, 'final');
+    assertFirstTag('some text #final', 'unwrapped', 'final');
     assertUnwrappedRegExp('some text #final', 'final');
-    assertFirstTag('intro #<end>', HashtagType.Wrapped, 'end');
-    assertFirstTag('#foo\\', HashtagType.Unwrapped, 'foo');
+    assertFirstTag('intro #<end>', 'wrapped', 'end');
+    assertFirstTag('#foo\\', 'unwrapped', 'foo');
     assertUnwrappedRegExp('#foo\\', 'foo\\');
   });
 
@@ -456,27 +576,28 @@ describe('Boundaries & EOI', () => {
   });
 
   it('handles punctuation at EOI', () => {
-    assertFirstTag('list: #item,', HashtagType.Unwrapped, 'item');
+    assertFirstTag('list: #item,', 'unwrapped', 'item');
     assertUnwrappedRegExp('list: #item.', 'item');
-    assertFirstTag('#tag:', HashtagType.Unwrapped, 'tag');
+    assertFirstTag('#tag:', 'unwrapped', 'tag');
   });
 });
 
 describe('Edge Cases & Specific Behavior', () => {
   it('allows escaped hash inside unwrapped', () => {
-    const m = unwrappedHashtagRegExp.exec('#foo\\#bar');
+    const regex = hashtagPattern({ type: 'unwrapped', global: true });
+    const m = regex.exec('#foo\\#bar');
     expect(m).not.toBeNull();
     expect(m![1]).toBe('foo\\#bar');
     expect(unescapeHashtagText(m![1])).toBe('foo#bar');
   });
 
   it('does not fallback from wrapped to unwrapped', () => {
-    const res = findHashtag('#<tag');
+    const res = findFirstHashtag('#<tag');
     expect(res).toBeNull();
   });
 
   it('validates strict empty text rejection', () => {
-    assertFirstTag('#\\\\', HashtagType.Unwrapped, '\\');
+    assertFirstTag('#\\\\', 'unwrapped', '\\');
     assertUnwrappedRegExp('#\\\\', '\\\\');
   });
 });
