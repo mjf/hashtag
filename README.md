@@ -7,14 +7,34 @@ escaping, delimiters, and Unicode processing.
 # DESCRIPTION
 
 Two distinct hashtag formats are recognized: _unwrapped_ and _wrapped_.
+
+## Unwrapped Format
+
 The unwrapped format begins with a number sign (`#`) followed
 immediately by properly encoded Unicode text (including _emojis_ and
 _surrogate pairs_), terminating at _spaces_ or specific _punctuation
-characters_: full stop (`.`), comma (`,`), semicolon (`;`), colon (`:`),
-exclamation mark (`!`), and question mark (`?`). Punctuation characters
-are treated as part of the hashtag only if they are followed by a
-character that is neither a space nor another punctuation character.
-Therefore, `#v1.0` is a valid hashtag producing `v1.0`.
+characters_.
+
+Punctuation behavior depends on a spacing strategy. The scanner
+distinguishes between _trailing_ punctuation (typically followed by a
+space) and _none_ punctuation (commonly used without a trailing space).
+Some systems also use "surrounding" punctuation (space before and
+after), but it does not apply here because whitespace always breaks
+unwrapped hashtags (unless escaped).
+
+With _trailing_ punctuation, the idea is: if the scanner reaches one of
+these punctuation characters (and it is not escaped), and the next
+character is whitespace (or end-of-input), then the punctuation is
+treated as _closing punctuation_: the hashtag ends _before_ the
+punctuation (the punctuation is not part of the tag), but if a
+non-whitespace character follows, the punctuation may remain inside the
+hashtag as a continuation (e.g., `#v1.0`).
+
+With _none_ punctuation, the idea is: you do not use "is the next
+character whitespace?" as a signal, because in those writing systems the
+punctuation is commonly written without a following space. So the
+scanner treats the punctuation as closing under the same continuation
+rule but without assuming a trailing space.
 
 A reversed solidus (`\`) allows the inclusion of spaces, punctuation
 characters, a literal less-than sign (`<`), and itself within an
@@ -27,6 +47,8 @@ to include a literal less-than sign at the start, it must be escaped
 text must contain at least one _valid_ character, so number sign
 followed by space (`# `) or number sign followed by a punctuation
 character and space (e.g., `#. `) are not valid unwrapped hashtags.
+
+## Wrapped Format
 
 The wrapped format encloses hashtag text between a less-than sign (`<`)
 and a greater-than sign (`>`). This format allows spaces and special
@@ -125,7 +147,36 @@ following character (they do not "span" beyond that character).
 Furthermore, the grammar requires conditional lookahead to validate
 punctuation characters within unwrapped tags.
 
+Unwrapped hashtags treat certain punctuation characters as closing only
+when the punctuation is encountered (and is not escaped) and the next
+character is whitespace (or EOI); this matches common spacing rules for
+Latin, Cyrillic, Greek, Hebrew, Indic scripts, Arabic, Persian, Urdu,
+Armenian, Ethiopic, and Georgian (e.g., `#tag, ` yields `tag`, but
+`#v1.0` keeps the `.` because it is followed by `0`). For scripts where
+punctuation is commonly written without a trailing space (Chinese,
+Japanese, Korean and Tibetan), the parser must not rely on trailing
+whitespace; those punctuation characters are treated as closing under
+the same continuation rule without assuming a trailing space.
+
 # API
+
+## `WhitespaceStrategy`
+
+```typescript
+type WhitespaceStrategy = 'trailing' | 'none';
+```
+
+## `ClosingPunctuationConfig`
+
+```typescript
+type ClosingPunctuationConfig = Record<string, WhitespaceStrategy>;
+```
+
+## `closingPunctuationRules`
+
+```typescript
+const closingPunctuationRules: ClosingPunctuationConfig;
+```
 
 ## `HashtagType`
 

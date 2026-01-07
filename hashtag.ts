@@ -30,6 +30,64 @@ export interface HashtagPattern {
   matchAllMatches(input: string): IterableIterator<HashtagMatch>;
 }
 
+export type WhitespaceStrategy = 'trailing' | 'none';
+export type ClosingPunctuationConfig = Record<
+  string,
+  WhitespaceStrategy
+>;
+
+export const closingPunctuationRules: ClosingPunctuationConfig = {
+  // Latin / Cyrillic / Greek / Hebrew
+  '\u002E': 'trailing', // FULL STOP
+  '\u002C': 'trailing', // COMMA
+  '\u0021': 'trailing', // EXCLAMATION MARK
+  '\u003F': 'trailing', // QUESTION MARK
+  '\u003B': 'trailing', // SEMICOLON
+  '\u003A': 'trailing', // COLON
+  '\u00B7': 'trailing', // MIDDLE DOT
+
+  // Devanagari / Bengali / Other Indic Scripts
+  '\u0964': 'trailing', // DEVANAGARI DANDA
+  '\u0965': 'trailing', // DEVANAGARI DOUBLE DANDA
+
+  // Arabic / Persian / Urdu (Logical trailing)
+  '\u060C': 'trailing', // ARABIC COMMA
+  '\u061B': 'trailing', // ARABIC SEMICOLON
+  '\u061F': 'trailing', // ARABIC QUESTION MARK
+  '\u06D4': 'trailing', // ARABIC FULL STOP
+
+  // Armenian
+  '\u0589': 'trailing', // ARMENIAN FULL STOP
+  '\u055B': 'trailing', // ARMENIAN MODIFIER LETTER LEFT HALF RING
+  '\u055C': 'trailing', // ARMENIAN EXCLAMATION MARK
+  '\u055E': 'trailing', // ARMENIAN QUESTION MARK
+
+  // Ethiopic (Amharic / Tigrinya)
+  '\u1361': 'trailing', // ETHIOPIC WORDSPACE
+  '\u1362': 'trailing', // ETHIOPIC FULL STOP
+  '\u1363': 'trailing', // ETHIOPIC COMMA
+  '\u1364': 'trailing', // ETHIOPIC SEMICOLON
+  '\u1365': 'trailing', // ETHIOPIC COLON
+
+  // Tibetan
+  '\u0F0D': 'none', // TIBETAN MARK SHAD
+  '\u0F0E': 'none', // TIBETAN MARK NYIS SHAD
+
+  // Georgian
+  '\u10FB': 'trailing', // GEORGIAN PARAGRAPH SEPARATOR
+
+  // CJK (Chinese, Japanese, Korean)
+  '\u3002': 'none', // IDEOGRAPHIC FULL STOP
+  '\u3001': 'none', // IDEOGRAPHIC COMMA
+  '\uFF0C': 'none', // FULLWIDTH COMMA
+  '\uFF1F': 'none', // FULLWIDTH QUESTION MARK
+  '\uFF01': 'none', // FULLWIDTH EXCLAMATION MARK
+  '\uFF1B': 'none', // FULLWIDTH SEMICOLON
+  '\uFF1A': 'none', // FULLWIDTH COLON
+  '\u30FB': 'none', // KATAKANA MIDDLE DOT
+  '\uFF0E': 'none', // FULLWIDTH FULL STOP
+};
+
 function isStrongTerminator(code: number): boolean {
   // 0x20 SP
   // 0x7f DEL
@@ -38,19 +96,8 @@ function isStrongTerminator(code: number): boolean {
 }
 
 function isPunctuation(code: number): boolean {
-  // 0x2e Full Stop
-  // 0x2c Period
-  // 0x3b Semicolon
-  // 0x3a Colon
-  // 0x21 Exclamation Mark
-  // 0x3f Question Mark
   return (
-    code === 0x2e ||
-    code === 0x2c ||
-    code === 0x3b ||
-    code === 0x3a ||
-    code === 0x21 ||
-    code === 0x3f
+    closingPunctuationRules[String.fromCharCode(code)] !== undefined
   );
 }
 
@@ -223,7 +270,13 @@ function extractUnwrappedTag(
       // 0x23 Hash
       break;
     }
-    if (isPunctuation(code)) {
+
+    const punctStrategy =
+      closingPunctuationRules[String.fromCharCode(code)];
+    if (punctStrategy !== undefined) {
+      if (punctStrategy === 'none') {
+        break;
+      }
       if (pos + 1 >= n) {
         break;
       }
@@ -237,6 +290,7 @@ function extractUnwrappedTag(
       pos += 1;
       continue;
     }
+
     pos += isSurrogatePair(input, pos) ? 2 : 1;
   }
   return pos > start

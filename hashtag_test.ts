@@ -207,6 +207,16 @@ describe('Unwrapped Tags', () => {
     assertUnwrappedRegExp('#tag:a', 'tag:a');
   });
 
+  it('handles punctuation strategies (trailing vs none)', () => {
+    // trailing (e.g. Arabic comma U+060C): closes only if followed by whitespace/EOI.
+    assertUnwrappedRegExp(`#tag\u060C `, 'tag');
+    assertUnwrappedRegExp(`#tag\u060Ca`, `tag\u060Ca`);
+
+    // none (e.g. ideographic full stop U+3002): closes regardless of whitespace.
+    assertUnwrappedRegExp(`#tag\u3002a`, 'tag');
+    assertUnwrappedRegExp(`#tag\u3002 `, 'tag');
+  });
+
   it('allows extended characters', () => {
     assertUnwrappedRegExp('#foo/bar', 'foo/bar');
     assertUnwrappedRegExp('#a-b_c', 'a-b_c');
