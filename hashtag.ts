@@ -30,7 +30,10 @@ export interface HashtagPattern {
   matchAllMatches(input: string): IterableIterator<HashtagMatch>;
 }
 
+// - 0 = trailing
+// - 1 = none
 export type PunctuationStrategyCode = 0 | 1;
+
 export type PunctuationStrategyCodeConfig = Record<
   number,
   PunctuationStrategyCode

@@ -166,6 +166,11 @@ the same continuation rule without assuming a trailing space.
 type PunctuationStrategyCode = 0 | 1;
 ```
 
+Controls how a punctuation code point behaves in unwrapped hashtags:
+
+- `0` = trailing
+- `1` = none
+
 ## `PunctuationStrategyCodeConfig`
 
 ```typescript
