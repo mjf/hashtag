@@ -255,12 +255,16 @@ function extractUnwrappedTag(
     }
     if (code === 0x5c) {
       // 0x5c Backslash
-      if (pos + 1 < n) {
-        const next = input.charCodeAt(pos + 1);
-        if (isLineBreakChar(next) || hasLoneSurrogate(input, pos + 1)) {
+      const nextPos = pos + 1;
+      if (nextPos < n) {
+        if (hasLoneSurrogate(input, nextPos)) {
           break;
         }
-        pos += isSurrogatePair(input, pos + 1) ? 3 : 2;
+        const next = input.charCodeAt(nextPos);
+        if (isLineBreakChar(next)) {
+          break;
+        }
+        pos += isSurrogatePair(input, nextPos) ? 3 : 2;
         continue;
       }
       pos += 1;
@@ -275,20 +279,21 @@ function extractUnwrappedTag(
       if (punctCode === 1) {
         break;
       }
-      if (pos + 1 >= n) {
+      const nextPos = pos + 1;
+      if (nextPos >= n) {
         break;
       }
-      if (hasLoneSurrogate(input, pos + 1)) {
+      if (hasLoneSurrogate(input, nextPos)) {
         break;
       }
-      const next = input.charCodeAt(pos + 1);
+      const next = input.charCodeAt(nextPos);
       if (
         isStrongTerminator(next) ||
         punctuationStrategyCode[next] !== undefined
       ) {
         break;
       }
-      pos += 1;
+      pos = nextPos;
       continue;
     }
     pos += isSurrogatePair(input, pos) ? 2 : 1;
