@@ -329,16 +329,16 @@ function isUnescapedHash(input: string, hashIndex: number): boolean {
   return (slashCount & 1) === 0;
 }
 
-function* scanAllHashtags(
+function scanNextHashtag(
   input: string,
-  fromIndex = 0,
-): Generator<ScanResult> {
+  fromIndex: number,
+): { item: ScanResult; nextIndex: number } | null {
   const n = input.length;
   let i = fromIndex;
   while (i < n) {
     const hashIndex = input.indexOf('#', i);
     if (hashIndex < 0) {
-      return;
+      return null;
     }
     if (hasLoneSurrogate(input, hashIndex)) {
       i = hashIndex + 1;
@@ -352,32 +352,35 @@ function* scanAllHashtags(
       // 0x3c Less-than Sign
       const parsed = extractWrappedTag(input, hashIndex);
       if (parsed) {
-        yield {
-          type: 'wrapped',
-          start: hashIndex,
-          end: parsed.end,
-          rawText: parsed.rawText,
+        return {
+          item: {
+            type: 'wrapped',
+            start: hashIndex,
+            end: parsed.end,
+            rawText: parsed.rawText,
+          },
+          nextIndex: parsed.end,
         };
-        i = parsed.end;
-        continue;
       }
       i = hashIndex + 2;
       continue;
     }
     const parsed = extractUnwrappedTag(input, hashIndex + 1);
     if (parsed) {
-      yield {
-        type: 'unwrapped',
-        start: hashIndex,
-        end: parsed.end,
-        rawText: parsed.rawText,
-        unescaped: parsed.unescaped,
+      return {
+        item: {
+          type: 'unwrapped',
+          start: hashIndex,
+          end: parsed.end,
+          rawText: parsed.rawText,
+          unescaped: parsed.unescaped,
+        },
+        nextIndex: parsed.end,
       };
-      i = parsed.end;
-      continue;
     }
     i = hashIndex + 1;
   }
+  return null;
 }
 
 export function unescapeHashtagText(text: string): string {
@@ -548,21 +551,26 @@ export function hashtagPattern(
       }
     }
     if (sticky) {
-      for (const item of scanAllHashtags(input, startIndex)) {
-        if (item.start !== startIndex) {
-          break;
+      const next = scanNextHashtag(input, startIndex);
+      if (next) {
+        const item = next.item;
+        if (item.start === startIndex) {
+          if (type === 'any' || item.type === type) {
+            return toMatch(item);
+          }
         }
-        if (type !== 'any' && item.type !== type) {
-          break;
-        }
-        return toMatch(item);
       }
       if (global || sticky) {
         state.lastIndex = 0;
       }
       return null;
     }
-    for (const item of scanAllHashtags(input, startIndex)) {
+    let i = startIndex;
+    while (true) {
+      const next = scanNextHashtag(input, i);
+      if (!next) break;
+      i = next.nextIndex;
+      const item = next.item;
       if (type !== 'any' && item.type !== type) {
         continue;
       }
