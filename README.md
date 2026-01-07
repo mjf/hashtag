@@ -33,7 +33,7 @@ and a greater-than sign (`>`). This format allows spaces and special
 characters within the hashtag. The less-than sign is valid without
 escaping inside the brackets. The greater-than sign and the reversed
 solidus must be preceded by a reversed solidus to be interpreted as
-text. The less-than sign _may_ be escaped (`\<`) and is treated as a
+text. The less-than sign may be escaped (`\<`) and is treated as a
 literal `<`; `createHashtag()` will escape `<` when producing wrapped
 hashtags. Therefore, `#<<example>` is valid and equivalent to
 `#<\<example>`, both producing the text `<example`. Also in case of
@@ -110,7 +110,7 @@ ANY            = %x00-10FFFF
 # IMPLEMENTATION
 
 The parser functions as a deterministic linear-time scanner. It
-traverses the input in a single pass, utilizing a _finite state machine_
+traverses the input in a single pass, utilizing a finite state machine
 (FSM) to handle delimiter detection and Unicode surrogate pairs. The
 scanner state exhibits a time complexity of _O(n)_ and auxiliary space
 complexity of _O(1)_. Returned values allocate proportionally to the
@@ -119,8 +119,11 @@ number and size of matches.
 The syntax exceeds the capabilities of standard regular expressions.
 Determining if a delimiter is escaped requires tracking the parity (even
 or odd count) of preceding backslashes, a task finite automata cannot
-perform. Furthermore, the grammar requires conditional lookahead to
-validate punctuation characters within unwrapped tags.
+perform. This parity check is used to determine whether a `#` is
+escaped; individual escape sequences apply only to the immediately
+following character (they do not "span" beyond that character).
+Furthermore, the grammar requires conditional lookahead to validate
+punctuation characters within unwrapped tags.
 
 # API
 
@@ -190,6 +193,10 @@ Creates a RegExp-like matcher.
 - `payload` is `rawText` by default; set `capture: 'text'` to capture
   the unescaped text instead.
 - If `sticky` is `true`, a match is accepted only at `lastIndex`.
+- `lastIndex` is coerced to a non-negative integer. Values greater than
+  the input length behave like JavaScript `RegExp`: `exec()` returns
+  `null` and, if `global` or `sticky` is enabled, resets `lastIndex` to
+  `0`.
 
 If `global` or `sticky` is enabled, a failed `exec()` resets `lastIndex`
 to `0`.
@@ -236,6 +243,7 @@ function iterateHashtags(
 
 These helpers operate as a thin layer on top of `hashtagPattern` with
 `global: true` and use `fromIndex` to initialize the scan position.
+`fromIndex` is coerced to a non-negative integer.
 
 ## `createHashtag`
 
@@ -244,7 +252,9 @@ function createHashtag(text: string): string
 ```
 
 Generates a hashtag string from the provided text, automatically
-selecting the wrapped or unwrapped format based on the content.
+selecting the wrapped or unwrapped format based on the content. If the
+input contains malformed surrogate code units, an empty string is
+returned.
 
 ```typescript
 createHashtag("hello world");

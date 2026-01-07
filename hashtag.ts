@@ -110,7 +110,7 @@ function isHorizontalWhitespace(code: number): boolean {
 }
 
 function normalizeWrappedText(text: string): string {
-  let result = '';
+  const out: string[] = [];
   let i = 0;
   while (i < text.length) {
     const code = text.charCodeAt(i);
@@ -120,7 +120,7 @@ function normalizeWrappedText(text: string): string {
       } else {
         i += 1;
       }
-      result += ' ';
+      out.push(' ');
       while (
         i < text.length &&
         isHorizontalWhitespace(text.charCodeAt(i))
@@ -131,7 +131,7 @@ function normalizeWrappedText(text: string): string {
     }
     if (code === 0x0a) {
       i += 1;
-      result += ' ';
+      out.push(' ');
       while (
         i < text.length &&
         isHorizontalWhitespace(text.charCodeAt(i))
@@ -140,10 +140,10 @@ function normalizeWrappedText(text: string): string {
       }
       continue;
     }
-    result += text[i];
+    out.push(text[i]);
     i += 1;
   }
-  return result;
+  return out.join('');
 }
 
 function extractWrappedTag(
@@ -260,7 +260,6 @@ function* scanAllHashtags(
   // 0 = even number of backslashes
   // 1 = odd (escaped)
   let slashParity = 0;
-
   while (i < n) {
     if (hasLoneSurrogate(input, i)) {
       slashParity = 0;
@@ -322,22 +321,22 @@ function* scanAllHashtags(
 }
 
 export function unescapeHashtagText(text: string): string {
-  let result = '';
+  const out: string[] = [];
   let i = 0;
   while (i < text.length) {
     if (text[i] === '\\') {
       if (i + 1 < text.length) {
-        result += text[i + 1];
+        out.push(text[i + 1]);
         i += 2;
       } else {
         i += 1;
       }
     } else {
-      result += text[i];
+      out.push(text[i]);
       i += 1;
     }
   }
-  return result;
+  return out.join('');
 }
 
 function canBeUnwrapped(text: string): boolean {
@@ -358,7 +357,7 @@ function canBeUnwrapped(text: string): boolean {
 }
 
 function escapeAsUnwrapped(text: string): string {
-  let result = '';
+  const out: string[] = [];
   for (let i = 0; i < text.length; ) {
     if (hasLoneSurrogate(text, i)) {
       return '';
@@ -369,51 +368,56 @@ function escapeAsUnwrapped(text: string): string {
     }
     const ch = text[i];
     if (i === 0 && ch === '<') {
-      result += '\\' + ch;
+      out.push('\\', ch);
       i += 1;
     } else if (ch === '\\' || ch === '#') {
-      result += '\\' + ch;
+      out.push('\\', ch);
       i += 1;
     } else if (isSurrogatePair(text, i)) {
-      result += text.slice(i, i + 2);
+      out.push(text.slice(i, i + 2));
       i += 2;
     } else {
-      result += ch;
+      out.push(ch);
       i += 1;
     }
   }
-  return result;
+  return out.join('');
 }
 
 function escapeAsWrapped(text: string): string {
-  let result = '';
+  const out: string[] = [];
   for (let i = 0; i < text.length; ) {
     if (hasLoneSurrogate(text, i)) {
       return '';
     }
     const ch = text[i];
     if (ch === '\\' || ch === '>' || ch === '<') {
-      result += '\\' + ch;
+      out.push('\\', ch);
       i += 1;
     } else if (isSurrogatePair(text, i)) {
-      result += text.slice(i, i + 2);
+      out.push(text.slice(i, i + 2));
       i += 2;
     } else {
-      result += ch;
+      out.push(ch);
       i += 1;
     }
   }
-  return result;
+  return out.join('');
 }
 
 export function createHashtag(text: string): string {
-  if (canBeUnwrapped(text)) {
-    return '#' + escapeAsUnwrapped(text);
-  } else if (!hasLoneSurrogate(text, 0)) {
-    return '#<' + escapeAsWrapped(text) + '>';
-  } else {
+  if (text.length === 0) {
     return '';
   }
+  if (hasAnyLoneSurrogate(text)) {
+    return '';
+  }
+  if (canBeUnwrapped(text)) {
+    const escaped = escapeAsUnwrapped(text);
+    return escaped.length > 0 ? '#' + escaped : '';
+  }
+  const escaped = escapeAsWrapped(text);
+  return escaped.length > 0 ? '#<' + escaped + '>' : '';
 }
 
 function toMatch(item: ScanResult): HashtagMatch | null {
@@ -465,14 +469,21 @@ export function hashtagPattern(
   const sticky = options.sticky ?? false;
   const capture = options.capture ?? 'rawText';
   const includeTypeGroup = type === 'any';
-
   const state = {
     lastIndex: 0,
   };
-
   function execInternal(input: string): HashtagMatch | null {
-    const startIndex = global || sticky ? state.lastIndex : 0;
-
+    let startIndex = 0;
+    if (global || sticky) {
+      // coerce lastIndex to a non-negative integer
+      const n = state.lastIndex;
+      const i = n > 0 ? n - (n % 1) : 0;
+      startIndex = i <= input.length ? i : input.length + 1;
+      state.lastIndex = startIndex > input.length ? 0 : i;
+      if (startIndex > input.length) {
+        return null;
+      }
+    }
     if (sticky) {
       for (const item of scanAllHashtags(input, startIndex)) {
         if (item.start !== startIndex) {
@@ -488,7 +499,6 @@ export function hashtagPattern(
       }
       return null;
     }
-
     for (const item of scanAllHashtags(input, startIndex)) {
       if (type !== 'any' && item.type !== type) {
         continue;
@@ -496,7 +506,6 @@ export function hashtagPattern(
       const m = toMatch(item);
       if (m) return m;
     }
-
     if (global || sticky) {
       state.lastIndex = 0;
     }
@@ -554,7 +563,9 @@ export function hashtagPattern(
       return state.lastIndex;
     },
     set lastIndex(v: number) {
-      state.lastIndex = v;
+      // Clamp/coerce lastIndex to a non-negative integer (no Math.*).
+      const n = v;
+      state.lastIndex = n > 0 ? n - (n % 1) : 0;
     },
     exec,
     execMatch,
@@ -591,7 +602,8 @@ export function findFirstHashtag(
     global: true,
   });
   if (options.fromIndex !== undefined) {
-    p.lastIndex = options.fromIndex;
+    const n = options.fromIndex;
+    p.lastIndex = n > 0 ? n - (n % 1) : 0;
   }
   return p.execMatch(input);
 }
@@ -605,7 +617,8 @@ export function findAllHashtags(
     global: true,
   });
   if (options.fromIndex !== undefined) {
-    p.lastIndex = options.fromIndex;
+    const n = options.fromIndex;
+    p.lastIndex = n > 0 ? n - (n % 1) : 0;
   }
   const out: HashtagMatch[] = [];
   while (true) {
@@ -625,7 +638,8 @@ export function* iterateHashtags(
     global: true,
   });
   if (options.fromIndex !== undefined) {
-    p.lastIndex = options.fromIndex;
+    const n = options.fromIndex;
+    p.lastIndex = n > 0 ? n - (n % 1) : 0;
   }
   while (true) {
     const m = p.execMatch(input);

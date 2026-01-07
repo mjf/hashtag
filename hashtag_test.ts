@@ -113,6 +113,12 @@ describe('Tag Synthesis', () => {
     expect(createHashtag('a\nb')).toBe('#<a\nb>');
     expect(createHashtag('a\rb')).toBe('#<a\rb>');
   });
+
+  it('returns empty string for lone surrogate anywhere (never emits #<>)', () => {
+    const s = `a\uD800b`;
+    expect(createHashtag(s)).toBe('');
+    expect(findFirstHashtag(createHashtag(s))).toBeNull();
+  });
 });
 
 describe('Wrapped Tags', () => {
@@ -205,7 +211,7 @@ describe('Unwrapped Tags', () => {
     assertUnwrappedRegExp('#foo/bar', 'foo/bar');
     assertUnwrappedRegExp('#a-b_c', 'a-b_c');
     assertUnwrappedRegExp('#123abc', '123abc');
-    assertUnwrappedRegExp('#😀x', '😀x');
+    assertUnwrappedRegExp(`#\uD83D\uDE00x`, `\uD83D\uDE00x`);
   });
 
   it('allows angle brackets', () => {
@@ -309,6 +315,28 @@ describe('RegExp Contract', () => {
     expect(r.lastIndex).toBe(0);
   });
 
+  it('coerces lastIndex to a non-negative integer', () => {
+    const input = 'text #one';
+    const r = hashtagPattern({ type: 'unwrapped', global: true });
+
+    r.lastIndex = -10;
+    expect(r.lastIndex).toBe(0);
+
+    r.lastIndex = 4.9;
+    const m = r.exec(input);
+    expect(m).not.toBeNull();
+    expect(m!.index).toBe(5);
+  });
+
+  it('lastIndex > input.length yields no match and resets in global/sticky', () => {
+    const input = '#one';
+    const r = hashtagPattern({ type: 'unwrapped', global: true });
+    r.lastIndex = 999;
+    const m = r.exec(input);
+    expect(m).toBeNull();
+    expect(r.lastIndex).toBe(0);
+  });
+
   it('captures type as group 2 for combined matcher', () => {
     const r = hashtag;
     r.reset();
@@ -391,17 +419,17 @@ describe('Malformed Surrogates', () => {
   });
 
   it('accepts valid surrogate pairs', () => {
-    const s = '#😀x';
+    const s = `#\uD83D\uDE00x`;
     const m = hashtagPattern({ type: 'unwrapped' }).exec(s);
     expect(m).not.toBeNull();
-    expect(m![1]).toBe('😀x');
+    expect(m![1]).toBe(`\uD83D\uDE00x`);
   });
 });
 
 describe('Complex Regex Iteration', () => {
   const input =
     '\\# #<long name> #test\\#ing # #\\<magic> ## ' +
-    '#🚀.launch #\n #<name> and #the\\ end.';
+    '#\uD83D\uDE80.launch #\n #<name> and #the\\ end.';
 
   it('iterates unwrapped regex over complex input', () => {
     const regex = hashtagPattern({ type: 'unwrapped', global: true });
@@ -421,8 +449,8 @@ describe('Complex Regex Iteration', () => {
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
-    expect(m![0]).toBe('#🚀.launch');
-    expect(m![1]).toBe('🚀.launch');
+    expect(m![0]).toBe('#\uD83D\uDE80.launch');
+    expect(m![1]).toBe('\uD83D\uDE80.launch');
     expect(m!.index).toBe(42);
 
     m = regex.exec(input);
@@ -482,8 +510,8 @@ describe('Complex Regex Iteration', () => {
 
     m = regex.exec(input);
     expect(m).not.toBeNull();
-    expect(m![0]).toBe('#🚀.launch');
-    expect(m![1]).toBe('🚀.launch');
+    expect(m![0]).toBe('#\uD83D\uDE80.launch');
+    expect(m![1]).toBe('\uD83D\uDE80.launch');
     expect(m![2]).toBe('unwrapped');
     expect(m!.index).toBe(42);
 
@@ -573,19 +601,19 @@ describe('Finding All Wrapped Tags', () => {
 
 describe('Unicode & Surrogates', () => {
   it('handles emoji in unwrapped tags', () => {
-    assertFirstTag('#😀 stuff', 'unwrapped', '😀');
-    assertSynthesis('😀', '#😀');
-    assertUnwrappedRegExp('#😀', '😀');
+    assertFirstTag('#\uD83D\uDE00 stuff', 'unwrapped', '\uD83D\uDE00');
+    assertSynthesis('\uD83D\uDE00', '#\uD83D\uDE00');
+    assertUnwrappedRegExp('#\uD83D\uDE00', '\uD83D\uDE00');
   });
 
   it('handles emoji in wrapped tags', () => {
-    assertWrappedTags('#<a😀b>', ['a😀b']);
-    assertWrappedTags('#<x\\>😀>', ['x\\>😀']);
+    assertWrappedTags('#<a\uD83D\uDE00b>', ['a\uD83D\uDE00b']);
+    assertWrappedTags('#<x\\>\uD83D\uDE00>', ['x\\>\uD83D\uDE00']);
   });
 
   it('handles surrogate pairs at start', () => {
-    assertUnwrappedRegExp('#😀x', '😀x');
-    assertFirstTag('#😀x?', 'unwrapped', '😀x');
+    assertUnwrappedRegExp('#\uD83D\uDE00x', '\uD83D\uDE00x');
+    assertFirstTag('#\uD83D\uDE00x?', 'unwrapped', '\uD83D\uDE00x');
   });
 });
 
@@ -655,14 +683,19 @@ describe('Edge Cases & Specific Behavior', () => {
 });
 
 describe('fromIndex', () => {
+  it('clamps negative fromIndex to 0', () => {
+    const m = findFirstHashtag('x #ok', { fromIndex: -100 });
+    expect(m).not.toBeNull();
+    expect(m!.raw).toBe('#ok');
+  });
+
   it('handles fromIndex beyond end of input', () => {
     expect(findFirstHashtag('#tag', { fromIndex: 999 })).toBeNull();
     expect(findAllHashtags('#tag', { fromIndex: 999 })).toEqual([]);
   });
 
   it('handles fromIndex inside a surrogate pair without crashing', () => {
-    const s = 'x😀 #ok';
-    // Place fromIndex at the low-surrogate code unit of 😀
+    const s = `x\uD83D\uDE00 #ok`;
     const lowSurrogateIndex = 2;
     const m = findFirstHashtag(s, { fromIndex: lowSurrogateIndex });
     expect(m).not.toBeNull();
