@@ -30,8 +30,6 @@ export interface HashtagPattern {
   matchAllMatches(input: string): IterableIterator<HashtagMatch>;
 }
 
-export type WhitespaceStrategy = 'trailing' | 'none';
-
 export type PunctuationStrategyCode = 0 | 1;
 export type PunctuationStrategyCodeConfig = Record<
   number,
@@ -98,10 +96,6 @@ function isStrongTerminator(code: number): boolean {
   // 0x7f DEL
   // 0x9f APC (C1 end)
   return code <= 0x20 || (code >= 0x7f && code <= 0x9f);
-}
-
-function isPunctuation(code: number): boolean {
-  return punctuationStrategyCode[code] !== undefined;
 }
 
 function isHighSurrogate(code: number): boolean {
@@ -286,7 +280,10 @@ function extractUnwrappedTag(
         break;
       }
       const next = input.charCodeAt(pos + 1);
-      if (isStrongTerminator(next) || isPunctuation(next)) {
+      if (
+        isStrongTerminator(next) ||
+        punctuationStrategyCode[next] !== undefined
+      ) {
         break;
       }
       pos += 1;

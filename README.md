@@ -160,12 +160,6 @@ the same continuation rule without assuming a trailing space.
 
 # API
 
-## `WhitespaceStrategy`
-
-```typescript
-type WhitespaceStrategy = 'trailing' | 'none';
-```
-
 ## `PunctuationStrategyCode`
 
 ```typescript
