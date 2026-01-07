@@ -270,7 +270,6 @@ function extractUnwrappedTag(
       // 0x23 Hash
       break;
     }
-
     const punctCode = punctuationStrategyCode[code];
     if (punctCode !== undefined) {
       if (punctCode === 1) {
@@ -292,7 +291,6 @@ function extractUnwrappedTag(
       pos += 1;
       continue;
     }
-
     pos += isSurrogatePair(input, pos) ? 2 : 1;
   }
   return pos > start
@@ -307,72 +305,68 @@ interface ScanResult {
   rawText: string;
 }
 
+function isUnescapedHash(input: string, hashIndex: number): boolean {
+  let slashCount = 0;
+  for (let j = hashIndex - 1; j >= 0; j -= 1) {
+    if (input.charCodeAt(j) !== 0x5c) {
+      // 0x5c Backslash
+      break;
+    }
+    slashCount += 1;
+  }
+  return (slashCount & 1) === 0;
+}
+
 function* scanAllHashtags(
   input: string,
   fromIndex = 0,
 ): Generator<ScanResult> {
   const n = input.length;
   let i = fromIndex;
-  // 0 = even number of backslashes
-  // 1 = odd (escaped)
-  let slashParity = 0;
   while (i < n) {
-    if (hasLoneSurrogate(input, i)) {
-      slashParity = 0;
-      i += 1;
+    const hashIndex = input.indexOf('#', i);
+    if (hashIndex < 0) {
+      return;
+    }
+    if (hasLoneSurrogate(input, hashIndex)) {
+      i = hashIndex + 1;
       continue;
     }
-    const code = input.charCodeAt(i);
-    if (code === 0x5c) {
-      // 0x5c Backslash
-      slashParity ^= 1;
-      i += 1;
+    if (!isUnescapedHash(input, hashIndex)) {
+      i = hashIndex + 1;
       continue;
     }
-    if (code === 0x23) {
-      // 0x23 Hash
-      if (slashParity === 0) {
-        const hashIndex = i;
-        if (i + 1 < n && input.charCodeAt(i + 1) === 0x3c) {
-          // 0x3c Less-than Sign
-          const parsed = extractWrappedTag(input, hashIndex);
-          if (parsed) {
-            yield {
-              type: 'wrapped',
-              start: hashIndex,
-              end: parsed.end,
-              rawText: parsed.rawText,
-            };
-            i = parsed.end;
-            slashParity = 0;
-            continue;
-          }
-          i = hashIndex + 2;
-          slashParity = 0;
-          continue;
-        }
-        const parsed = extractUnwrappedTag(input, hashIndex + 1);
-        if (parsed) {
-          const unescaped = unescapeHashtagText(parsed.rawText);
-          if (unescaped.length > 0 && !hasAnyLoneSurrogate(unescaped)) {
-            yield {
-              type: 'unwrapped',
-              start: hashIndex,
-              end: parsed.end,
-              rawText: parsed.rawText,
-            };
-            i = parsed.end;
-            slashParity = 0;
-            continue;
-          }
-        }
+    if (hashIndex + 1 < n && input.charCodeAt(hashIndex + 1) === 0x3c) {
+      // 0x3c Less-than Sign
+      const parsed = extractWrappedTag(input, hashIndex);
+      if (parsed) {
+        yield {
+          type: 'wrapped',
+          start: hashIndex,
+          end: parsed.end,
+          rawText: parsed.rawText,
+        };
+        i = parsed.end;
+        continue;
       }
-      i += 1;
-      slashParity = 0;
+      i = hashIndex + 2;
       continue;
     }
-    slashParity = 0;
-    i += isSurrogatePair(input, i) ? 2 : 1;
+    const parsed = extractUnwrappedTag(input, hashIndex + 1);
+    if (parsed) {
+      const unescaped = unescapeHashtagText(parsed.rawText);
+      if (unescaped.length > 0 && !hasAnyLoneSurrogate(unescaped)) {
+        yield {
+          type: 'unwrapped',
+          start: hashIndex,
+          end: parsed.end,
+          rawText: parsed.rawText,
+        };
+        i = parsed.end;
+        continue;
+      }
+    }
+    i = hashIndex + 1;
   }
 }
 
