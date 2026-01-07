@@ -242,7 +242,7 @@ function extractWrappedTag(
 function extractUnwrappedTag(
   input: string,
   start: number,
-): { end: number; rawText: string } | null {
+): { end: number; rawText: string; unescaped: string } | null {
   const n = input.length;
   let pos = start;
   while (pos < n) {
@@ -298,9 +298,15 @@ function extractUnwrappedTag(
     }
     pos += isSurrogatePair(input, pos) ? 2 : 1;
   }
-  return pos > start
-    ? { end: pos, rawText: input.slice(start, pos) }
-    : null;
+  if (pos <= start) {
+    return null;
+  }
+  const rawText = input.slice(start, pos);
+  const unescaped = unescapeHashtagText(rawText);
+  if (unescaped.length === 0 || hasAnyLoneSurrogate(unescaped)) {
+    return null;
+  }
+  return { end: pos, rawText, unescaped };
 }
 
 interface ScanResult {
@@ -308,6 +314,7 @@ interface ScanResult {
   start: number;
   end: number;
   rawText: string;
+  unescaped?: string;
 }
 
 function isUnescapedHash(input: string, hashIndex: number): boolean {
@@ -359,17 +366,15 @@ function* scanAllHashtags(
     }
     const parsed = extractUnwrappedTag(input, hashIndex + 1);
     if (parsed) {
-      const unescaped = unescapeHashtagText(parsed.rawText);
-      if (unescaped.length > 0 && !hasAnyLoneSurrogate(unescaped)) {
-        yield {
-          type: 'unwrapped',
-          start: hashIndex,
-          end: parsed.end,
-          rawText: parsed.rawText,
-        };
-        i = parsed.end;
-        continue;
-      }
+      yield {
+        type: 'unwrapped',
+        start: hashIndex,
+        end: parsed.end,
+        rawText: parsed.rawText,
+        unescaped: parsed.unescaped,
+      };
+      i = parsed.end;
+      continue;
     }
     i = hashIndex + 1;
   }
@@ -478,7 +483,10 @@ export function createHashtag(text: string): string {
 function toMatch(item: ScanResult): HashtagMatch | null {
   const raw =
     item.type === 'wrapped' ? `#<${item.rawText}>` : `#${item.rawText}`;
-  const unescaped = unescapeHashtagText(item.rawText);
+  const unescaped =
+    item.type === 'unwrapped' && item.unescaped !== undefined
+      ? item.unescaped
+      : unescapeHashtagText(item.rawText);
   if (unescaped.length === 0 || hasAnyLoneSurrogate(unescaped)) {
     return null;
   }
