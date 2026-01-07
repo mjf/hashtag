@@ -87,6 +87,16 @@ function hasLoneSurrogate(input: string, pos: number): boolean {
   return false;
 }
 
+function hasAnyLoneSurrogate(input: string): boolean {
+  for (let i = 0; i < input.length; ) {
+    if (hasLoneSurrogate(input, i)) {
+      return true;
+    }
+    i += isSurrogatePair(input, i) ? 2 : 1;
+  }
+  return false;
+}
+
 function isLineBreakChar(code: number): boolean {
   // 0x0d CR
   // 0x0a LF
@@ -289,7 +299,7 @@ function* scanAllHashtags(
         const parsed = extractUnwrappedTag(input, hashIndex + 1);
         if (parsed) {
           const unescaped = unescapeHashtagText(parsed.rawText);
-          if (unescaped.length > 0 && !hasLoneSurrogate(unescaped, 0)) {
+          if (unescaped.length > 0 && !hasAnyLoneSurrogate(unescaped)) {
             yield {
               type: 'unwrapped',
               start: hashIndex,
@@ -406,10 +416,13 @@ export function createHashtag(text: string): string {
   }
 }
 
-function toMatch(item: ScanResult): HashtagMatch {
+function toMatch(item: ScanResult): HashtagMatch | null {
   const raw =
     item.type === 'wrapped' ? `#<${item.rawText}>` : `#${item.rawText}`;
   const unescaped = unescapeHashtagText(item.rawText);
+  if (unescaped.length === 0 || hasAnyLoneSurrogate(unescaped)) {
+    return null;
+  }
   return {
     type: item.type,
     start: item.start,
@@ -427,6 +440,7 @@ function toExecArray(
   match: HashtagMatch,
   includeTypeGroup: boolean,
   capture: 'rawText' | 'text',
+  input: string,
 ): RegExpExecArray {
   const payload = capture === 'text' ? match.text : match.rawText;
   const arr: unknown[] = [match.raw, payload];
@@ -435,7 +449,7 @@ function toExecArray(
   }
   const execArray = arr as RegExpExecArray;
   execArray.index = match.start;
-  execArray.input = '';
+  execArray.input = input;
   return execArray;
 }
 
@@ -479,7 +493,8 @@ export function hashtagPattern(
       if (type !== 'any' && item.type !== type) {
         continue;
       }
-      return toMatch(item);
+      const m = toMatch(item);
+      if (m) return m;
     }
 
     if (global || sticky) {
@@ -496,7 +511,7 @@ export function hashtagPattern(
     if (global || sticky) {
       state.lastIndex = m.end;
     }
-    return toExecArray(m, includeTypeGroup, capture);
+    return toExecArray(m, includeTypeGroup, capture, input);
   }
 
   function execMatch(input: string): HashtagMatch | null {

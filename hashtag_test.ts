@@ -290,6 +290,25 @@ describe('RegExp Contract', () => {
     expect(m!.index).toBe(10);
   });
 
+  it('sticky without global still advances and resets on failure', () => {
+    const input = 'text #one #two';
+    const r = hashtagPattern({
+      type: 'unwrapped',
+      sticky: true,
+      global: false,
+    });
+
+    r.lastIndex = 5;
+    let m = r.exec(input);
+    expect(m).not.toBeNull();
+    expect(m![0]).toBe('#one');
+    expect(r.lastIndex).toBe(9);
+
+    m = r.exec(input);
+    expect(m).toBeNull();
+    expect(r.lastIndex).toBe(0);
+  });
+
   it('captures type as group 2 for combined matcher', () => {
     const r = hashtag;
     r.reset();
@@ -311,6 +330,14 @@ describe('RegExp Contract', () => {
     const m2 = r.exec('#<foo\\<bar\\>>');
     expect(m2).not.toBeNull();
     expect(m2![1]).toBe('foo<bar>');
+  });
+
+  it('exec() sets RegExpExecArray.input to the original input', () => {
+    const input = 'A #one B';
+    const r = hashtagPattern({ type: 'unwrapped' });
+    const m = r.exec(input);
+    expect(m).not.toBeNull();
+    expect(m!.input).toBe(input);
   });
 
   it('matchAll returns same sequence as global exec', () => {
@@ -528,7 +555,6 @@ describe('Resilience & Recovery', () => {
 
   it('handles hashes followed by punctuation', () => {
     assertFirstTag('#..#tag', 'unwrapped', 'tag');
-    assertFirstTag('#..#tag', 'unwrapped', 'tag');
     assertFirstTag('#!#tag', 'unwrapped', '!');
   });
 
@@ -625,5 +651,21 @@ describe('Edge Cases & Specific Behavior', () => {
   it('validates strict empty text rejection', () => {
     assertFirstTag('#\\\\', 'unwrapped', '\\');
     assertUnwrappedRegExp('#\\\\', '\\\\');
+  });
+});
+
+describe('fromIndex', () => {
+  it('handles fromIndex beyond end of input', () => {
+    expect(findFirstHashtag('#tag', { fromIndex: 999 })).toBeNull();
+    expect(findAllHashtags('#tag', { fromIndex: 999 })).toEqual([]);
+  });
+
+  it('handles fromIndex inside a surrogate pair without crashing', () => {
+    const s = 'x😀 #ok';
+    // Place fromIndex at the low-surrogate code unit of 😀
+    const lowSurrogateIndex = 2;
+    const m = findFirstHashtag(s, { fromIndex: lowSurrogateIndex });
+    expect(m).not.toBeNull();
+    expect(m!.raw).toBe('#ok');
   });
 });

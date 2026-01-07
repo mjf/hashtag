@@ -20,20 +20,22 @@ A reversed solidus (`\`) allows the inclusion of spaces, punctuation
 characters, a literal less-than sign (`<`), and itself within an
 unwrapped hashtag. For example, `#this\ is\ example` yields
 `this is example`. Since a less-than sign following the number sign
-(`#<`) initiates a wrapped hashtag, a sequence like `#<example` results
-in an error if the closing bracket is missing; to include a literal
-less-than sign at the start, it must be escaped (`#\<example`). In case
-of unwrapped hashtag format a resulting hashtag text must contain at
-least one _valid_ character, so number sign followed by space (`# `) or
-number sign followed by a punctuation character and space (e.g., `#. `)
-are not valid unwrapped hashtags.
+(`#<`) initiates a wrapped hashtag, a sequence like `#<example` is not a
+valid hashtag if the closing bracket is missing (it produces no match);
+to include a literal less-than sign at the start, it must be escaped
+(`#\<example`). In case of unwrapped hashtag format a resulting hashtag
+text must contain at least one _valid_ character, so number sign
+followed by space (`# `) or number sign followed by a punctuation
+character and space (e.g., `#. `) are not valid unwrapped hashtags.
 
 The wrapped format encloses hashtag text between a less-than sign (`<`)
 and a greater-than sign (`>`). This format allows spaces and special
 characters within the hashtag. The less-than sign is valid without
-escaping inside the brackets, but the greater-than sign and the reversed
+escaping inside the brackets. The greater-than sign and the reversed
 solidus must be preceded by a reversed solidus to be interpreted as
-text. Therefore, `#<<example>` is valid and equivalent to
+text. The less-than sign _may_ be escaped (`\<`) and is treated as a
+literal `<`; `createHashtag()` will escape `<` when producing wrapped
+hashtags. Therefore, `#<<example>` is valid and equivalent to
 `#<\<example>`, both producing the text `<example`. Also in case of
 wrapped hashtag format a resulting hashtag text must contain at least
 one _valid_ character, so `#<>` is not a valid hashtag.
@@ -53,9 +55,10 @@ unwrapped-text     = 1*unwrapped-char
 
 unwrapped-char     = escape-pair / punct-continuation / regular-char
 
-escape-pair        = BACKSLASH ANY
+escape-pair        = BACKSLASH non-linebreak
                    ; allows spaces, punctuation, HASH, BACKSLASH, "<"
-                   ; always continues, never terminates
+                   ; NOTE: unwrapped hashtags do not allow escaping a line break;
+                   ; a backslash followed by a line break terminates the hashtag.
 
 punct-continuation = PUNCT non-terminator
                    ; punctuation followed by continuing character
@@ -67,6 +70,9 @@ regular-char       = %x22 / %x24-2B / %x2D / %x2F-39 / %x3D
 
 non-terminator     = regular-char
                    ; any character that doesn't terminate
+
+non-linebreak      = %x00-09 / %x0B-0C / %x0E-10FFFF
+                   ; any Unicode scalar value except LF/CR
 ```
 
 ```abnf
@@ -77,8 +83,8 @@ wrapped-text    = 1*wrapped-char
 wrapped-char    = escape-pair / regular-char
 
 escape-pair     = BACKSLASH ANY
-                ; specifically allows escaping ">" and BACKSLASH
-                ; < does not need to be escaped
+                ; allows escaping ">" and BACKSLASH
+                ; "<" does not need to be escaped but may be escaped
 
 regular-char    = %x00-3D / %x3F-5B / %x5D-10FFFF
                 ; any character except ">" and BACKSLASH
