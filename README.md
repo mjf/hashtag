@@ -166,16 +166,22 @@ the same continuation rule without assuming a trailing space.
 type WhitespaceStrategy = 'trailing' | 'none';
 ```
 
-## `ClosingPunctuationConfig`
+## `PunctuationStrategyCode`
 
 ```typescript
-type ClosingPunctuationConfig = Record<string, WhitespaceStrategy>;
+type PunctuationStrategyCode = 0 | 1;
 ```
 
-## `closingPunctuationRules`
+## `PunctuationStrategyCodeConfig`
 
 ```typescript
-const closingPunctuationRules: ClosingPunctuationConfig;
+type PunctuationStrategyCodeConfig = Record<number, PunctuationStrategyCode>;
+```
+
+## `punctuationStrategyCode`
+
+```typescript
+const punctuationStrategyCode: PunctuationStrategyCodeConfig;
 ```
 
 ## `HashtagType`

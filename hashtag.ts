@@ -31,62 +31,67 @@ export interface HashtagPattern {
 }
 
 export type WhitespaceStrategy = 'trailing' | 'none';
-export type ClosingPunctuationConfig = Record<
-  string,
-  WhitespaceStrategy
+
+export type PunctuationStrategyCode = 0 | 1;
+export type PunctuationStrategyCodeConfig = Record<
+  number,
+  PunctuationStrategyCode
 >;
 
-export const closingPunctuationRules: ClosingPunctuationConfig = {
+export const punctuationStrategyCode: PunctuationStrategyCodeConfig =
+  Object.create(null);
+
+{
   // Latin / Cyrillic / Greek / Hebrew
-  '\u002E': 'trailing', // FULL STOP
-  '\u002C': 'trailing', // COMMA
-  '\u0021': 'trailing', // EXCLAMATION MARK
-  '\u003F': 'trailing', // QUESTION MARK
-  '\u003B': 'trailing', // SEMICOLON
-  '\u003A': 'trailing', // COLON
-  '\u00B7': 'trailing', // MIDDLE DOT
+  punctuationStrategyCode[0x002e] = 0; // FULL STOP
+  punctuationStrategyCode[0x002c] = 0; // COMMA
+  punctuationStrategyCode[0x0021] = 0; // EXCLAMATION MARK
+  punctuationStrategyCode[0x003f] = 0; // QUESTION MARK
+  punctuationStrategyCode[0x003b] = 0; // SEMICOLON
+  punctuationStrategyCode[0x003a] = 0; // COLON
+  punctuationStrategyCode[0x00b7] = 0; // MIDDLE DOT
 
   // Devanagari / Bengali / Other Indic Scripts
-  '\u0964': 'trailing', // DEVANAGARI DANDA
-  '\u0965': 'trailing', // DEVANAGARI DOUBLE DANDA
+  punctuationStrategyCode[0x0964] = 0; // DEVANAGARI DANDA
+  punctuationStrategyCode[0x0965] = 0; // DEVANAGARI DOUBLE DANDA
 
   // Arabic / Persian / Urdu (Logical trailing)
-  '\u060C': 'trailing', // ARABIC COMMA
-  '\u061B': 'trailing', // ARABIC SEMICOLON
-  '\u061F': 'trailing', // ARABIC QUESTION MARK
-  '\u06D4': 'trailing', // ARABIC FULL STOP
+  punctuationStrategyCode[0x060c] = 0; // ARABIC COMMA
+  punctuationStrategyCode[0x061b] = 0; // ARABIC SEMICOLON
+  punctuationStrategyCode[0x061f] = 0; // ARABIC QUESTION MARK
+  punctuationStrategyCode[0x06d4] = 0; // ARABIC FULL STOP
 
   // Armenian
-  '\u0589': 'trailing', // ARMENIAN FULL STOP
-  '\u055B': 'trailing', // ARMENIAN MODIFIER LETTER LEFT HALF RING
-  '\u055C': 'trailing', // ARMENIAN EXCLAMATION MARK
-  '\u055E': 'trailing', // ARMENIAN QUESTION MARK
+  punctuationStrategyCode[0x0589] = 0; // ARMENIAN FULL STOP
+  punctuationStrategyCode[0x055b] = 0; // ARMENIAN MODIFIER LETTER LEFT HALF RING
+  punctuationStrategyCode[0x055c] = 0; // ARMENIAN EXCLAMATION MARK
+  punctuationStrategyCode[0x055e] = 0; // ARMENIAN QUESTION MARK
 
   // Ethiopic (Amharic / Tigrinya)
-  '\u1361': 'trailing', // ETHIOPIC WORDSPACE
-  '\u1362': 'trailing', // ETHIOPIC FULL STOP
-  '\u1363': 'trailing', // ETHIOPIC COMMA
-  '\u1364': 'trailing', // ETHIOPIC SEMICOLON
-  '\u1365': 'trailing', // ETHIOPIC COLON
+  punctuationStrategyCode[0x1361] = 0; // ETHIOPIC WORDSPACE
+  punctuationStrategyCode[0x1362] = 0; // ETHIOPIC FULL STOP
+  punctuationStrategyCode[0x1363] = 0; // ETHIOPIC COMMA
+  punctuationStrategyCode[0x1364] = 0; // ETHIOPIC SEMICOLON
+  punctuationStrategyCode[0x1365] = 0; // ETHIOPIC COLON
 
   // Tibetan
-  '\u0F0D': 'none', // TIBETAN MARK SHAD
-  '\u0F0E': 'none', // TIBETAN MARK NYIS SHAD
+  punctuationStrategyCode[0x0f0d] = 1; // TIBETAN MARK SHAD
+  punctuationStrategyCode[0x0f0e] = 1; // TIBETAN MARK NYIS SHAD
 
   // Georgian
-  '\u10FB': 'trailing', // GEORGIAN PARAGRAPH SEPARATOR
+  punctuationStrategyCode[0x10fb] = 0; // GEORGIAN PARAGRAPH SEPARATOR
 
   // CJK (Chinese, Japanese, Korean)
-  '\u3002': 'none', // IDEOGRAPHIC FULL STOP
-  '\u3001': 'none', // IDEOGRAPHIC COMMA
-  '\uFF0C': 'none', // FULLWIDTH COMMA
-  '\uFF1F': 'none', // FULLWIDTH QUESTION MARK
-  '\uFF01': 'none', // FULLWIDTH EXCLAMATION MARK
-  '\uFF1B': 'none', // FULLWIDTH SEMICOLON
-  '\uFF1A': 'none', // FULLWIDTH COLON
-  '\u30FB': 'none', // KATAKANA MIDDLE DOT
-  '\uFF0E': 'none', // FULLWIDTH FULL STOP
-};
+  punctuationStrategyCode[0x3002] = 1; // IDEOGRAPHIC FULL STOP
+  punctuationStrategyCode[0x3001] = 1; // IDEOGRAPHIC COMMA
+  punctuationStrategyCode[0xff0c] = 1; // FULLWIDTH COMMA
+  punctuationStrategyCode[0xff1f] = 1; // FULLWIDTH QUESTION MARK
+  punctuationStrategyCode[0xff01] = 1; // FULLWIDTH EXCLAMATION MARK
+  punctuationStrategyCode[0xff1b] = 1; // FULLWIDTH SEMICOLON
+  punctuationStrategyCode[0xff1a] = 1; // FULLWIDTH COLON
+  punctuationStrategyCode[0x30fb] = 1; // KATAKANA MIDDLE DOT
+  punctuationStrategyCode[0xff0e] = 1; // FULLWIDTH FULL STOP
+}
 
 function isStrongTerminator(code: number): boolean {
   // 0x20 SP
@@ -96,9 +101,7 @@ function isStrongTerminator(code: number): boolean {
 }
 
 function isPunctuation(code: number): boolean {
-  return (
-    closingPunctuationRules[String.fromCharCode(code)] !== undefined
-  );
+  return punctuationStrategyCode[code] !== undefined;
 }
 
 function isHighSurrogate(code: number): boolean {
@@ -271,10 +274,9 @@ function extractUnwrappedTag(
       break;
     }
 
-    const punctStrategy =
-      closingPunctuationRules[String.fromCharCode(code)];
-    if (punctStrategy !== undefined) {
-      if (punctStrategy === 'none') {
+    const punctCode = punctuationStrategyCode[code];
+    if (punctCode !== undefined) {
+      if (punctCode === 1) {
         break;
       }
       if (pos + 1 >= n) {
