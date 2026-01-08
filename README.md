@@ -67,7 +67,7 @@ Wrapped hashtags may span multiple lines. Line breaks (`\n`, `\r`, or
 and any horizontal whitespace immediately following the line break is
 ignored.
 
-# GRAMMAR AND SEMANTIC RULES
+# SPECIFICATION
 
 ## Normative Grammar
 
@@ -152,7 +152,7 @@ Japanese, Korean and Tibetan), the parser must not rely on trailing
 whitespace; those punctuation characters are treated as closing under
 the same continuation rule without assuming a trailing space.
 
-# API
+# INTERFACE
 
 ## `PunctuationStrategyCode`
 
