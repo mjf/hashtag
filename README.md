@@ -24,11 +24,12 @@ unwrapped hashtags (unless escaped).
 
 With _trailing_ punctuation, the idea is: if the scanner reaches one of
 these punctuation characters (and it is not escaped), and the next
-character is whitespace (or end-of-input), then the punctuation is
-treated as _closing punctuation_: the hashtag ends _before_ the
-punctuation (the punctuation is not part of the tag), but if a
-non-whitespace character follows, the punctuation may remain inside the
-hashtag as a continuation (e.g., `#v1.0`).
+character is a `strong-terminator`, another `punctuation-char`, or end
+of input (EOI), then the punctuation is treated as _closing
+punctuation_: the hashtag ends _before_ the punctuation (the punctuation
+is not part of the tag), but if a non-whitespace character follows, the
+punctuation may remain inside the hashtag as a continuation (e.g.,
+`#v1.0`).
 
 With _none_ punctuation, the idea is: you do not use "is the next
 character whitespace?" as a signal, because in those writing systems the
@@ -64,8 +65,8 @@ one _valid_ character, so `#<>` is not a valid hashtag.
 
 Wrapped hashtags may span multiple lines. Line breaks (`\n`, `\r`, or
 `\r\n`) in wrapped hashtags are normalized to a single space character,
-and any horizontal whitespace immediately following the line break is
-ignored.
+and any horizontal whitespace (`HTAB` or `SP`) immediately following the
+line break is ignored.
 
 # SPECIFICATION
 
@@ -102,7 +103,7 @@ non-terminator           = scalar
                          - punctuation-char
 
 wrapped-hashtag          = unescaped-hash lt-sign wrapped-text gt-sign
-                         ; see APPENDIX B.4
+                         ; see APPENDIX B.2 and B.4
 
 wrapped-text             = 1*wrapped-char
 
@@ -110,6 +111,7 @@ wrapped-char             = escape-any
                          / wrapped-regular-char
 
 escape-any               = backslash scalar
+                         ; see APPENDIX B.2
 
 wrapped-regular-char     = scalar
                          - gt-sign
@@ -143,14 +145,15 @@ punctuation characters within unwrapped tags.
 
 Unwrapped hashtags treat certain punctuation characters as closing only
 when the punctuation is encountered (and is not escaped) and the next
-character is whitespace (or EOI); this matches common spacing rules for
-Latin, Cyrillic, Greek, Hebrew, Indic scripts, Arabic, Persian, Urdu,
-Armenian, Ethiopic, and Georgian (e.g., `#tag, ` yields `tag`, but
-`#v1.0` keeps the `.` because it is followed by `0`). For scripts where
-punctuation is commonly written without a trailing space (Chinese,
-Japanese, Korean and Tibetan), the parser must not rely on trailing
-whitespace; those punctuation characters are treated as closing under
-the same continuation rule without assuming a trailing space.
+character is a `strong-terminator`, a `punctuation-char`, or EOI; this
+matches common spacing rules for Latin, Cyrillic, Greek, Hebrew, Indic
+scripts, Arabic, Persian, Urdu, Armenian, Ethiopic, and Georgian (e.g.,
+`#tag, ` yields `tag`, but `#v1.0` keeps the `.` because it is followed
+by `0`). For scripts where punctuation is commonly written without a
+trailing space (Chinese, Japanese, Korean and Tibetan), the parser must
+not rely on trailing whitespace; those punctuation characters are
+treated as closing under the same continuation rule without assuming a
+trailing space.
 
 # INTERFACE
 
@@ -370,8 +373,8 @@ scalar            = %x00-D7FF
 ## A.2 Punctuation Character Classes
 
 Punctuation treated as closing only when followed by
-`strong-terminator`, `punctuation-char`, or `end-of-input`; otherwise it
-may continue.
+`strong-terminator`, `punctuation-char`, or EOI; otherwise it may
+continue.
 
 ```abnf
 punctuation-trailing = "."    ; FULL STOP
@@ -431,15 +434,15 @@ In wrapped hashtags, an unescaped `>` closes the wrapped text. An
 escaped `\>` is literal payload.
 
 Additionally, wrapped hashtags normalize line breaks in the payload to a
-single space character, and any horizontal whitespace immediately
-following the line break is ignored.
+single space character, and any horizontal whitespace (`HTAB` or `SP`)
+immediately following the line break is ignored.
 
 ## B.3 Punctuation Lookahead Rule
 
 For `punctuation-trailing` code points, the punctuation is treated as
 closing iff the next code point is a `strong-terminator` or another
-`punctuation-char` or end-of-input. Otherwise the punctuation may remain
-inside the hashtag as a continuation.
+`punctuation-char` or EOI. Otherwise the punctuation may remain inside
+the hashtag as a continuation.
 
 For `punctuation-none` code points, the punctuation is always treated as
 closing.
