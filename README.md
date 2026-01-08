@@ -407,8 +407,8 @@ punctuation-none = %x0F0D ; TIBETAN MARK SHAD
 
 # APPENDIX B
 
-Normative semantic rules that are normative and **MUST** be applied in
-addition to the normative grammar.
+Normative semantic rules **MUST** be applied in addition to the
+normative grammar.
 
 ## B.1 Hash Parity Rule
 
@@ -438,3 +438,7 @@ otherwise it **MUST** be parsed as an unwrapped hashtag.
 
 A missing closing `gt-sign` makes the wrapped hashtag invalid (no
 match).
+
+# LICENSE
+
+MIT
