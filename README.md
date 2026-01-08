@@ -67,66 +67,56 @@ Wrapped hashtags may span multiple lines. Line breaks (`\n`, `\r`, or
 and any horizontal whitespace immediately following the line break is
 ignored.
 
-# GRAMMAR
+# GRAMMAR AND SEMANTIC RULES
+
+## Normative Grammar
+
+This ABNF grammar is structural and normative and **MUST** be
+implemented together with the normative semantic rules (see APPENDIX B).
 
 ```abnf
-unwrapped-hashtag  = unescaped-hash unwrapped-text
-                   ; hash must NOT be followed by an unescaped "<"
+hashtag                  = wrapped-hashtag
+                         / unwrapped-hashtag
 
-unwrapped-text     = 1*unwrapped-char
+unwrapped-hashtag        = unescaped-hash unwrapped-text
+                         ; see APPENDIX B.4
 
-unwrapped-char     = escape-pair / punct-continuation / regular-char
+unwrapped-text           = 1*unwrapped-char
 
-escape-pair        = BACKSLASH non-linebreak
-                   ; allows spaces, punctuation, HASH, BACKSLASH, "<"
-                   ; NOTE: unwrapped hashtags do not allow escaping a line break;
-                   ; a backslash followed by a line break terminates the hashtag.
+unwrapped-char           = escape-pair
+                         / punctuation-continuation
+                         / unwrapped-regular-char
 
-punct-continuation = PUNCT non-terminator
-                   ; punctuation followed by continuing character
+escape-pair              = backslash non-linebreak
+                         ; a backslash followed by a line break terminates the hashtag.
 
-regular-char       = %x22 / %x24-2B / %x2D / %x2F-39 / %x3D
-                   / %x3C-3E / %x40-10FFFF
-                   ; excludes: STRONG, HASH, PUNCT, BACKSLASH
-                   ; Note: < and > are valid characters in unwrapped form
+punctuation-continuation = punctuation-char non-terminator
+                         ; see APPENDIX B.3
 
-non-terminator     = regular-char
-                   ; any character that doesn't terminate
+unwrapped-regular-char   = non-terminator
 
-non-linebreak      = %x00-09 / %x0B-0C / %x0E-10FFFF
-                   ; any Unicode scalar value except LF/CR
-```
+non-terminator           = scalar
+                         - strong-terminator
+                         - hash-sign
+                         - backslash
+                         - punctuation-char
 
-```abnf
-wrapped-hashtag = unescaped-hash "<" wrapped-text ">"
+wrapped-hashtag          = unescaped-hash lt-sign wrapped-text gt-sign
+                         ; see APPENDIX B.4
 
-wrapped-text    = 1*wrapped-char
+wrapped-text             = 1*wrapped-char
 
-wrapped-char    = escape-pair / regular-char
+wrapped-char             = escape-any
+                         / wrapped-regular-char
 
-escape-pair     = BACKSLASH ANY
-                ; allows escaping ">" and BACKSLASH
-                ; "<" does not need to be escaped but may be escaped
+escape-any               = backslash scalar
 
-regular-char    = %x00-3D / %x3F-5B / %x5D-10FFFF
-                ; any character except ">" and BACKSLASH
-```
+wrapped-regular-char     = scalar
+                         - gt-sign
+                         - backslash
 
-```abnf
-; Shared Core Definitions
-unescaped-hash = "#"
-               ; preceded by even number of backslashes (including zero)
-
-STRONG         = %x00-20 / %x7F-9F
-               ; whitespace, control characters, DEL, C1 controls
-
-PUNCT          = "." / "," / ";" / ":" / "!" / "?"
-
-HASH           = "#"
-
-BACKSLASH      = "\"
-
-ANY            = %x00-10FFFF
+punctuation-char         = punctuation-trailing ; see APPENDIX A.2
+                         / punctuation-none     ; ditto
 ```
 
 # IMPLEMENTATION
@@ -330,6 +320,117 @@ clean text content.
 unescapeHashtagText("foo\\ bar");
 ```
 
-# LICENSE
+# APPENDIX A
 
-MIT
+## A.1 Core Character Classes
+
+```abnf
+hash-sign         = "#"
+backslash         = "\"
+lt-sign           = "<"
+gt-sign           = ">"
+
+unescaped-hash    = hash-sign
+
+linebreak         = CR
+                  / LF
+
+h-wsp             = SP
+                  / HTAB
+
+ascii-ctl         = CTL
+
+c1-ctl            = %x80-9F
+
+strong-terminator = ascii-ctl
+                  / SP
+                  / c1-ctl
+
+non-linebreak     = scalar - linebreak
+
+scalar            = %x00-D7FF
+                  / %xE000-10FFFF
+                  ; Unicode scalar values (surrogates excluded)
+```
+
+## A.2 Punctuation Character Classes
+
+Punctuation treated as closing only when followed by
+`strong-terminator`, `punctuation-char`, or `end-of-input`; otherwise it
+may continue.
+
+```abnf
+punctuation-trailing = "."    ; FULL STOP
+                     / ","    ; COMMA
+                     / "!"    ; EXCLAMATION MARK
+                     / "?"    ; QUESTION MARK
+                     / ";"    ; SEMICOLON
+                     / ":"    ; COLON
+                     / %x00B7 ; MIDDLE DOT
+                     / %x0964 ; DEVANAGARI DANDA
+                     / %x0965 ; DEVANAGARI DOUBLE DANDA
+                     / %x060C ; ARABIC COMMA
+                     / %x061B ; ARABIC SEMICOLON
+                     / %x061F ; ARABIC QUESTION MARK
+                     / %x06D4 ; ARABIC FULL STOP
+                     / %x0589 ; ARMENIAN FULL STOP
+                     / %x055B ; ARMENIAN MODIFIER LETTER LEFT HALF RING
+                     / %x055C ; ARMENIAN EXCLAMATION MARK
+                     / %x055E ; ARMENIAN QUESTION MARK
+                     / %x1361 ; ETHIOPIC WORDSPACE
+                     / %x1362 ; ETHIOPIC FULL STOP
+                     / %x1363 ; ETHIOPIC COMMA
+                     / %x1364 ; ETHIOPIC SEMICOLON
+                     / %x1365 ; ETHIOPIC COLON
+                     / %x10FB ; GEORGIAN PARAGRAPH SEPARATOR
+```
+
+Punctuation treated as closing without relying on trailing whitespace.
+
+```abnf
+punctuation-none = %x0F0D ; TIBETAN MARK SHAD
+                 / %x0F0E ; TIBETAN MARK NYIS SHAD
+                 / %x3002 ; IDEOGRAPHIC FULL STOP
+                 / %x3001 ; IDEOGRAPHIC COMMA
+                 / %xFF0C ; FULLWIDTH COMMA
+                 / %xFF1F ; FULLWIDTH QUESTION MARK
+                 / %xFF01 ; FULLWIDTH EXCLAMATION MARK
+                 / %xFF1B ; FULLWIDTH SEMICOLON
+                 / %xFF1A ; FULLWIDTH COLON
+                 / %x30FB ; KATAKANA MIDDLE DOT
+                 / %xFF0E ; FULLWIDTH FULL STOP
+```
+
+# APPENDIX B
+
+Normative semantic rules that are normative and **MUST** be applied in
+addition to the normative grammar.
+
+## B.1 Hash Parity Rule (`unescaped-hash`)
+
+A `#` begins a hashtag only if it is preceded by an even number of `\`
+code points immediately adjacent to it (including zero).
+
+## B.2 Wrapped Closing Rule
+
+In wrapped hashtags, an unescaped `>` closes the wrapped text. An
+escaped `\>` is literal payload.
+
+## B.3 Punctuation Lookahead Rule
+
+For `punctuation-trailing` code points, the punctuation is treated as
+closing iff the next code point is a `strong-terminator` or another
+`punctuation-char` or end-of-input. Otherwise the punctuation may remain
+inside the hashtag as a continuation.
+
+For `punctuation-none` code points, the punctuation is always treated as
+closing.
+
+## B.4 Wrapped/Unwrapped Disambiguation Rule (`#<`)
+
+After an `unescaped-hash`, if the next code point is an unescaped
+`lt-sign`, the hashtag MUST be parsed as a wrapped hashtag; otherwise it
+MUST be parsed as an unwrapped hashtag.
+
+A missing closing `gt-sign` makes the wrapped hashtag invalid (no
+match).
