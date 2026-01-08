@@ -430,7 +430,7 @@ inside the hashtag as a continuation.
 For `punctuation-none` code points, the punctuation is always treated as
 closing.
 
-## B.4 Hashtag Format Disambiguation Rule
+## B.4 Format Disambiguation Rule
 
 After an `unescaped-hash`, if the next code point is an unescaped
 `lt-sign`, the hashtag **MUST** be parsed as a wrapped hashtag;
