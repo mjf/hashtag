@@ -339,9 +339,6 @@ unescaped-hash    = hash-sign
 linebreak         = CR
                   / LF
 
-h-wsp             = SP
-                  / HTAB
-
 ascii-ctl         = CTL
 
 c1-ctl            = %x80-9F
@@ -419,6 +416,10 @@ code points immediately adjacent to it (including zero).
 
 In wrapped hashtags, an unescaped `>` closes the wrapped text. An
 escaped `\>` is literal payload.
+
+Additionally, wrapped hashtags normalize line breaks in the payload to a
+single space character, and any horizontal whitespace immediately
+following the line break is ignored.
 
 ## B.3 Punctuation Lookahead Rule
 
