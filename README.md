@@ -426,11 +426,11 @@ inside the hashtag as a continuation.
 For `punctuation-none` code points, the punctuation is always treated as
 closing.
 
-## B.4 Wrapped/Unwrapped Disambiguation Rule (`#<`)
+## B.4 Wrapped/Unwrapped Disambiguation Rule
 
 After an `unescaped-hash`, if the next code point is an unescaped
-`lt-sign`, the hashtag MUST be parsed as a wrapped hashtag; otherwise it
-MUST be parsed as an unwrapped hashtag.
+`lt-sign`, the hashtag **MUST** be parsed as a wrapped hashtag;
+otherwise it **MUST** be parsed as an unwrapped hashtag.
 
 A missing closing `gt-sign` makes the wrapped hashtag invalid (no
 match).
