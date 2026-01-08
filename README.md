@@ -410,7 +410,7 @@ punctuation-none = %x0F0D ; TIBETAN MARK SHAD
 Normative semantic rules that are normative and **MUST** be applied in
 addition to the normative grammar.
 
-## B.1 Hash Parity Rule (`unescaped-hash`)
+## B.1 Hash Parity Rule
 
 A `#` begins a hashtag only if it is preceded by an even number of `\`
 code points immediately adjacent to it (including zero).
@@ -430,7 +430,7 @@ inside the hashtag as a continuation.
 For `punctuation-none` code points, the punctuation is always treated as
 closing.
 
-## B.4 Hashtag Formats Disambiguation Rule
+## B.4 Hashtag Format Disambiguation Rule
 
 After an `unescaped-hash`, if the next code point is an unescaped
 `lt-sign`, the hashtag **MUST** be parsed as a wrapped hashtag;
