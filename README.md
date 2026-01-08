@@ -119,6 +119,10 @@ punctuation-char         = punctuation-trailing ; see APPENDIX A.2
                          / punctuation-none     ; ditto
 ```
 
+## Normative Semantic Rules
+
+See APPENDIX B.
+
 # IMPLEMENTATION
 
 The parser functions as a deterministic linear-time scanner. It
