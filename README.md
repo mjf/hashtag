@@ -196,14 +196,19 @@ type HashtagMatch = {
 };
 ```
 
-Represents a parsed hashtag in a source string.
+Represents a parsed hashtag found in the input string.
 
-- `start` and `end` are UTF-16 indices, with `end` being exclusive.
-- `raw` is the full matched token, including the prefix and wrappers.
-- `rawText` is the escaped payload (no wrappers).
-- `text` is the unescaped payload. For wrapped hashtags, line breaks are
-  normalized to a single space and any following horizontal whitespace
-  is ignored.
+`start` and `end` are UTF-16 indices into the input; `end` is exclusive.
+
+`raw` is the full matched token, including the leading `#` and, for
+wrapped hashtags, the surrounding `<` and `>`.
+
+`rawText` is the payload as it appears in the token, with escapes still
+present and without any wrappers.
+
+`text` is the unescaped payload. For wrapped hashtags, line breaks are
+normalized to a single space and any horizontal whitespace immediately
+following the line break is ignored.
 
 Malformed surrogate code units are rejected inside hashtags.
 
@@ -236,20 +241,28 @@ function hashtagPattern(options?: HashtagPatternOptions): HashtagPattern;
 
 Creates a RegExp-like matcher.
 
-- `global` defaults to `false`, matching JavaScript `RegExp` behavior.
-- If `type` is `'any'`, `exec()` returns `[full, payload, type]`.
-- If `type` is `'wrapped'` or `'unwrapped'`, `exec()` returns
-  `[full, payload]`.
-- `payload` is `rawText` by default; set `capture: 'text'` to capture
-  the unescaped text instead.
-- If `sticky` is `true`, a match is accepted only at `lastIndex`.
-- `lastIndex` is coerced to a non-negative integer. Values greater than
-  the input length behave like JavaScript `RegExp`: `exec()` returns
-  `null` and, if `global` or `sticky` is enabled, resets `lastIndex` to
-  `0`.
+By default, `global` is `false`, so `exec()` finds at most one match,
+like JavaScript `RegExp`.
 
-If `global` or `sticky` is enabled, a failed `exec()` resets `lastIndex`
-to `0`.
+The `type` option selects what to match. With `'wrapped'` or
+`'unwrapped'`, only that form is matched. With `'any'`, both forms are
+matched, and the match also reports which form was found.
+
+The shape of the `exec()` result depends on `type`. For `'wrapped'` and
+`'unwrapped'`, the result is `[full, payload]`. For `'any'`, the result
+is `[full, payload, type]`, where `type` is `'wrapped' | 'unwrapped'`.
+
+The captured `payload` is `rawText` by default; set `capture: 'text'` to
+capture the unescaped payload instead.
+
+If `sticky` is `true`, `exec()` only accepts a match that starts exactly
+at `lastIndex`.
+
+`lastIndex` is always coerced to a non-negative integer. If it is
+greater than the input length, `exec()` returns `null` and, when
+`global` or `sticky` is enabled, resets `lastIndex` to `0`. When
+`global` or `sticky` is enabled, any failed `exec()` also resets
+`lastIndex` to `0`.
 
 ## Built-in patterns
 
